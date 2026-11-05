@@ -1,0 +1,823 @@
+generator client {
+  provider = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // URL configured in prisma.config.ts
+}
+
+// ───────────── Enums ─────────────
+enum UserRole { // PARENT reserved for Phase 2
+  ADMIN
+  STAFF
+  TEACHER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum Audience {
+  CHILDREN
+  TEENS
+  ADULTS
+}
+
+enum GenderPolicy {
+  MIXED
+  MALE_ONLY
+  FEMALE_ONLY
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  LEFT
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  ENDED
+}
+
+enum Riwaya {
+  QALUN
+  WARSH
+  HAFS
+}
+
+enum GuardianRelation {
+  FATHER
+  MOTHER
+  BROTHER
+  SISTER
+  GRANDPARENT
+  UNCLE
+  AUNT
+  OTHER
+}
+
+enum TeachingRole {
+  MAIN                                   // المؤدّب(ة)
+  ASSISTANT
+  SUPERVISOR                             // الشيخ المشرف
+}
+
+enum ContractType {
+  VOLUNTEER
+  PAID
+}
+
+enum DayOfWeek {
+  SATURDAY
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+}
+
+enum SessionStatus {
+  HELD
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum ChargeKind {
+  MONTHLY
+  ONE_OFF
+  MEMBERSHIP                             // معلوم الانخراط السنوي
+}
+
+enum ChargeStatus {
+  OPEN
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHECK
+  MOBILE
+  OTHER
+}
+
+enum HifzEntryType {
+  NEW
+  RECENT_REVISION
+  OLD_REVISION
+  INITIAL_LEVEL
+}
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum MessageKind {
+  RECEIPT
+  PAYMENT_REMINDER
+  ABSENCE
+  CLASS_ANNOUNCEMENT                     // teacher absent, session moved/added
+  MEMBERSHIP_REMINDER
+  CUSTOM
+}
+
+enum ImportStatus {
+  UPLOADED
+  VALIDATED
+  COMMITTED
+  FAILED
+}
+
+enum SlotKind {
+  MEMORIZATION                           // تحفيظ
+  REVISION                               // مراجعة
+  MIXED
+}
+
+enum NewsCategory {
+  ANNOUNCEMENT                           // إعلام
+  ACTIVITY                               // نشاط / فعاليات
+  THANKS                                 // شكر و تقدير
+  CONDOLENCE                             // تعزية
+  ASSOCIATION                            // جلسة عامة، انخراط
+}
+
+// ───────────── School ─────────────
+model School {
+  id        String   @id @default(uuid(7))
+  name      String                       // Arabic
+  nameLatin String?
+  slug      String   @unique
+  phone     String?
+  address   String?
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings      SchoolSettings?
+  academicYears AcademicYear[]
+  users         User[]
+  teachers      Teacher[]
+  guardians     Guardian[]
+  students      Student[]
+  venues        Venue[]
+  rooms         Room[]
+  classes       Class[]
+  memberships   Membership[]
+  enrollments   Enrollment[]
+  classSessions ClassSession[]
+  feeItems      FeeItem[]
+  charges       Charge[]
+  payments      Payment[]
+  counters      Counter[]
+  hifzSessions  HifzSession[]
+  messageLogs   MessageLog[]
+  newsPosts     NewsPost[]
+  importJobs    ImportJob[]
+  auditLogs     AuditLog[]
+  @@map("schools")
+}
+
+model SchoolSettings {
+  schoolId                 String   @id
+  school                   School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  currency                 String   @default("TND")
+  timezone                 String   @default("Africa/Tunis")
+  defaultRiwaya            Riwaya   @default(QALUN)
+  guardianRequiredUnderAge Int      @default(18)
+  billingDay               Int      @default(1)
+  paymentDueDays           Int      @default(10)
+  receiptFooter            String?
+  whatsappTemplates        Json                 // { RECEIPT: "...", PAYMENT_REMINDER: "...", ... }
+  aboutHtml                String?
+  contactPhone             String?
+  whatsappPhone            String?
+  mapEmbedUrl              String?
+  socialLinks              Json?
+  showHijriDates           Boolean  @default(true)
+  updatedAt                DateTime @updatedAt
+  @@map("school_settings")
+}
+
+model AcademicYear {
+  id             String   @id @default(uuid(7))
+  schoolId       String
+  school         School   @relation(fields: [schoolId], references: [id])
+  name           String                   // "2026-2027"
+  startDate      DateTime @db.Date
+  endDate        DateTime @db.Date
+  billableMonths Int[]                    // e.g. [9,10,11,12,1,2,3,4,5,6]
+  isCurrent      Boolean  @default(false) // one per school (partial unique index)
+  membershipFee         Decimal?  @db.Decimal(10, 3)  // e.g. 20.000 TND; null = no membership this year
+  membershipWindowStart DateTime? @db.Date            // e.g. 2026-11-01
+  membershipWindowEnd   DateTime? @db.Date            // e.g. 2027-01-30
+  classes        Class[]
+  memberships    Membership[]
+  @@unique([schoolId, name])
+  @@map("academic_years")
+}
+
+// ───────────── Users & auth ─────────────
+model User {
+  id                 String    @id @default(uuid(7))
+  schoolId           String
+  school             School    @relation(fields: [schoolId], references: [id])
+  email              String?
+  phone              String?                // E.164; email OR phone required (CHECK)
+  passwordHash       String
+  role               UserRole
+  firstName          String
+  lastName           String
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  teacher            Teacher?               // set when role = TEACHER
+  refreshTokens      RefreshToken[]
+  paymentsReceived   Payment[]     @relation("PaymentReceivedBy")
+  paymentsVoided     Payment[]     @relation("PaymentVoidedBy")
+  attendanceMarked   Attendance[]
+  hifzRecorded       HifzSession[] @relation("HifzRecordedBy")
+  messagesPrepared   MessageLog[]
+  newsPosts          NewsPost[]
+  importJobs         ImportJob[]
+  auditLogs          AuditLog[]
+  @@unique([schoolId, email])
+  @@unique([schoolId, phone])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid(7))
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId  String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  createdAt DateTime  @default(now())
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ───────────── Teachers (may exist without a login) ─────────────
+model Teacher {
+  id             String        @id @default(uuid(7))
+  schoolId       String
+  school         School        @relation(fields: [schoolId], references: [id])
+  userId         String?       @unique   // null = teacher without login
+  user           User?         @relation(fields: [userId], references: [id])
+  studentId      String?       @unique   // "المؤدّبة الطالبة": a student who also teaches
+  student        Student?      @relation(fields: [studentId], references: [id])
+  title          String?                 // display title: مؤدّب، مؤدّبة، الشيخ، الأستاذة
+  firstName      String
+  lastName       String
+  gender         Gender
+  phone          String?
+  specialization String?                 // حفظ، تجويد، كلاهما
+  hireDate       DateTime?     @db.Date
+  contractType   ContractType  @default(VOLUNTEER)
+  monthlySalary  Decimal?      @db.Decimal(10, 3)   // ADMIN-only field
+  isActive       Boolean       @default(true)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  ijazas         TeacherIjaza[]
+  classes        ClassTeacher[]
+  classSessions  ClassSession[]
+  hifzSessions   HifzSession[]
+  @@index([schoolId, isActive])
+  @@map("teachers")
+}
+
+model TeacherIjaza {
+  id          String  @id @default(uuid(7))
+  teacherId   String
+  teacher     Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title       String                     // "إجازة في رواية قالون عن نافع"
+  riwaya      Riwaya?
+  grantedBy   String?                    // sheikh / institution
+  year        Int?
+  documentUrl String?                    // scanned certificate (authenticated download)
+  @@index([teacherId])
+  @@map("teacher_ijazas")
+}
+
+// ───────────── Students & guardians ─────────────
+model Guardian {
+  id        String   @id @default(uuid(7))
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  fullName  String
+  phone     String                       // E.164 — NOT unique: shared phones allowed, UI warns
+  phone2    String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  students  StudentGuardian[]
+  payments  Payment[]                    // as payer → family credit lives here
+  @@index([schoolId, phone])
+  @@index([schoolId, fullName])
+  @@map("guardians")
+}
+
+model StudentGuardian {
+  studentId  String
+  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardianId String
+  guardian   Guardian         @relation(fields: [guardianId], references: [id], onDelete: Restrict)
+  relation   GuardianRelation
+  isPrimary  Boolean          @default(false)  // one per student (partial unique index)
+  isPayer    Boolean          @default(false)
+  @@id([studentId, guardianId])
+  @@index([guardianId])
+  @@map("student_guardians")
+}
+
+model Student {
+  id             String        @id @default(uuid(7))
+  schoolId       String
+  school         School        @relation(fields: [schoolId], references: [id])
+  code           String                    // "2026-0042"
+  firstName      String
+  lastName       String
+  firstNameLatin String?
+  lastNameLatin  String?
+  gender         Gender
+  dateOfBirth    DateTime?     @db.Date
+  phone          String?                   // adults
+  address        String?
+  riwaya         Riwaya?                   // null → class → school default
+  status         StudentStatus @default(ACTIVE)
+  photoUrl       String?
+  photoConsent   Boolean       @default(false)
+  declaredHifz   String?                   // level as written at import ("12 حزب", "من الناس إلى عمّ"); becomes INITIAL_LEVEL entries in Slice 6
+  notes          String?
+  joinedAt       DateTime      @default(now()) @db.Date
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  guardians      StudentGuardian[]
+  enrollments    Enrollment[]
+  attendance     Attendance[]
+  charges        Charge[]
+  payments       Payment[]                 // as payer (adult students) → own credit
+  hifzSessions   HifzSession[]
+  hifzSummary    StudentHifzSummary?
+  memberships    Membership[]
+  teacherProfile Teacher?                  // set when this student also teaches
+  @@unique([schoolId, code])
+  @@index([schoolId, status])
+  @@index([schoolId, lastName, firstName])
+  @@map("students")
+}
+
+// ───────────── Venues, rooms, classes (إملاءات), schedule ─────────────
+model Venue {                            // مقر الجمعية، جامع غزة – حي النيفر …
+  id          String  @id @default(uuid(7))
+  schoolId    String
+  school      School  @relation(fields: [schoolId], references: [id])
+  name        String
+  address     String?
+  mapEmbedUrl String?
+  isPublic    Boolean @default(true)      // listed on the public site
+  isActive    Boolean @default(true)
+  rooms       Room[]
+  @@unique([schoolId, name])
+  @@map("venues")
+}
+
+model Room {
+  id       String  @id @default(uuid(7))
+  schoolId String
+  school   School  @relation(fields: [schoolId], references: [id])
+  venueId  String
+  venue    Venue   @relation(fields: [venueId], references: [id])
+  name     String
+  capacity Int?
+  isActive Boolean @default(true)
+  classes  Class[]
+  @@unique([venueId, name])
+  @@map("rooms")
+}
+
+model Class {
+  id             String       @id @default(uuid(7))
+  schoolId       String
+  school         School       @relation(fields: [schoolId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  name           String                    // "إملاء البقرة وآل عمران – طالبات"
+  level          String?
+  quranScope     String?                   // free text: "سورة البقرة وآل عمران", "الحزب 51–60"
+  audience       Audience
+  genderPolicy   GenderPolicy @default(MIXED)
+  capacity       Int          @default(25)
+  riwaya         Riwaya?
+  monthlyFee     Decimal?     @db.Decimal(10, 3)  // null or 0 = free imla'
+  requiresMembership Boolean  @default(true)      // attendees must hold this year's membership
+  isPublic       Boolean      @default(true)      // shown in the public schedule
+  roomId         String?
+  room           Room?        @relation(fields: [roomId], references: [id])
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  teachers       ClassTeacher[]
+  scheduleSlots  ScheduleSlot[]
+  enrollments    Enrollment[]
+  sessions       ClassSession[]
+  newsPosts      NewsPost[]
+  @@unique([schoolId, academicYearId, name])
+  @@map("classes")
+}
+
+model ClassTeacher {
+  classId   String
+  class     Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacherId String
+  teacher   Teacher      @relation(fields: [teacherId], references: [id])
+  role      TeachingRole @default(MAIN)   // one MAIN per class (partial unique index)
+  @@id([classId, teacherId])
+  @@index([teacherId])
+  @@map("class_teachers")
+}
+
+model ScheduleSlot {
+  id        String    @id @default(uuid(7))
+  classId   String
+  class     Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  day       DayOfWeek
+  kind      SlotKind  @default(MEMORIZATION)
+  startTime String                         // "HH:mm" (approximate for prayer-based slots)
+  endTime   String
+  timeLabel String?                        // shown instead of the time: "بعد العصر"
+  @@index([classId])
+  @@map("schedule_slots")
+}
+
+model Enrollment {
+  id                 String           @id @default(uuid(7))
+  schoolId           String
+  school             School           @relation(fields: [schoolId], references: [id])
+  studentId          String
+  student            Student          @relation(fields: [studentId], references: [id])
+  classId            String
+  class              Class            @relation(fields: [classId], references: [id])
+  status             EnrollmentStatus @default(ACTIVE)  // one ACTIVE per student+class
+  startDate          DateTime         @db.Date
+  endDate            DateTime?        @db.Date
+  monthlyFeeOverride Decimal?         @db.Decimal(10, 3) // 0 = free place
+  createdAt          DateTime         @default(now())
+  charges            Charge[]
+  @@index([schoolId, classId, status])
+  @@index([studentId])
+  @@map("enrollments")
+}
+
+// ───────────── Attendance ─────────────
+model ClassSession {
+  id           String        @id @default(uuid(7))
+  schoolId     String
+  school       School        @relation(fields: [schoolId], references: [id])
+  classId      String
+  class        Class         @relation(fields: [classId], references: [id])
+  teacherId    String?                       // who actually taught (substitute possible)
+  teacher      Teacher?      @relation(fields: [teacherId], references: [id])
+  date         DateTime      @db.Date
+  startTime    String
+  endTime      String?
+  status       SessionStatus @default(HELD)
+  cancelReason String?                       // "تغيّب المؤدّبة" → excluded from attendance stats
+  notes        String?
+  attendance   Attendance[]
+  hifzSessions HifzSession[]
+  @@unique([classId, date, startTime])
+  @@index([schoolId, date])
+  @@map("class_sessions")
+}
+
+model Attendance {
+  sessionId  String
+  session    ClassSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student          @relation(fields: [studentId], references: [id])
+  status     AttendanceStatus
+  note       String?
+  markedById String                          // user who entered it (may be staff on behalf)
+  markedBy   User             @relation(fields: [markedById], references: [id])
+  markedAt   DateTime         @default(now())
+  @@id([sessionId, studentId])
+  @@index([studentId])
+  @@map("attendance")
+}
+
+// ───────────── Fees, payments, credit ─────────────
+model FeeItem {
+  id            String   @id @default(uuid(7))
+  schoolId      String
+  school        School   @relation(fields: [schoolId], references: [id])
+  name          String                     // "رسوم التسجيل", "كتب"...
+  defaultAmount Decimal  @db.Decimal(10, 3)
+  isActive      Boolean  @default(true)
+  charges       Charge[]
+  @@unique([schoolId, name])
+  @@map("fee_items")
+}
+
+model Charge {
+  id           String       @id @default(uuid(7))
+  schoolId     String
+  school       School       @relation(fields: [schoolId], references: [id])
+  studentId    String
+  student      Student      @relation(fields: [studentId], references: [id])
+  kind         ChargeKind
+  enrollmentId String?
+  enrollment   Enrollment?  @relation(fields: [enrollmentId], references: [id])
+  period       DateTime?    @db.Date      // first day of month for MONTHLY
+  feeItemId    String?
+  feeItem      FeeItem?     @relation(fields: [feeItemId], references: [id])
+  label        String                     // denormalised display text
+  amount       Decimal      @db.Decimal(10, 3)
+  paidAmount   Decimal      @default(0) @db.Decimal(10, 3)  // 0 ≤ paid ≤ amount (CHECK)
+  dueDate      DateTime     @db.Date
+  status       ChargeStatus @default(OPEN)
+  cancelReason String?
+  createdAt    DateTime     @default(now())
+  allocations  PaymentAllocation[]
+  membership   Membership?
+  @@unique([enrollmentId, period])         // idempotent monthly generation
+  @@index([schoolId, status, dueDate])
+  @@index([studentId, status])
+  @@map("charges")
+}
+
+model Membership {                         // الانخراط السنوي في الجمعية
+  id             String       @id @default(uuid(7))
+  schoolId       String
+  school         School       @relation(fields: [schoolId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id])
+  memberNumber   String                    // per school + year, from Counter "member:2026-2027"
+  isNew          Boolean                   // new member (form filled) vs renewal
+  formReceived   Boolean      @default(false)  // استمارة الانخراط (new members)
+  chargeId       String       @unique      // the MEMBERSHIP charge; paid status comes from it
+  charge         Charge       @relation(fields: [chargeId], references: [id])
+  createdAt      DateTime     @default(now())
+  @@unique([academicYearId, studentId])
+  @@unique([schoolId, academicYearId, memberNumber])
+  @@map("memberships")
+}
+
+model Payment {
+  id                String        @id @default(uuid(7))
+  schoolId          String
+  school            School        @relation(fields: [schoolId], references: [id])
+  receiptNumber     String                  // "2026-00042" — year of paidAt in school timezone
+  // exactly one payer (CHECK): a guardian (family) or an adult student
+  payerGuardianId   String?
+  payerGuardian     Guardian?     @relation(fields: [payerGuardianId], references: [id])
+  payerStudentId    String?
+  payerStudent      Student?      @relation(fields: [payerStudentId], references: [id])
+  payerName         String                  // snapshot for the receipt
+  amount            Decimal       @db.Decimal(10, 3)
+  unallocatedAmount Decimal       @default(0) @db.Decimal(10, 3)  // remaining credit
+  method            PaymentMethod
+  reference         String?                 // check no., transfer ref
+  paidAt            DateTime      @default(now())
+  receivedById      String
+  receivedBy        User          @relation("PaymentReceivedBy", fields: [receivedById], references: [id])
+  notes             String?
+  publicToken       String        @unique
+  pdfPath           String?
+  voidedAt          DateTime?
+  voidedById        String?
+  voidedBy          User?         @relation("PaymentVoidedBy", fields: [voidedById], references: [id])
+  voidReason        String?
+  createdAt         DateTime      @default(now())
+  allocations       PaymentAllocation[]
+  @@unique([schoolId, receiptNumber])
+  @@index([schoolId, paidAt])
+  @@index([payerGuardianId])
+  @@index([payerStudentId])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  paymentId   String
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+  chargeId    String
+  charge      Charge   @relation(fields: [chargeId], references: [id])
+  amount      Decimal  @db.Decimal(10, 3)
+  fromCredit  Boolean  @default(false)     // applied later from unallocated credit
+  allocatedAt DateTime @default(now())
+  @@id([paymentId, chargeId])
+  @@index([chargeId])
+  @@map("payment_allocations")
+}
+
+model Counter {
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+  key      String                          // "receipt:2026", "student:2026"
+  value    Int
+  @@id([schoolId, key])
+  @@map("counters")
+}
+
+// ───────────── Quran reference (global, seeded) ─────────────
+model Surah {
+  id         Int              @id          // 1..114
+  nameAr     String
+  nameLatin  String
+  ayahCounts SurahAyahCount[]
+  @@map("surahs")
+}
+
+model SurahAyahCount {
+  riwaya    Riwaya
+  surahId   Int
+  surah     Surah  @relation(fields: [surahId], references: [id])
+  ayahCount Int
+  @@id([riwaya, surahId])
+  @@map("surah_ayah_counts")
+}
+
+model QuranThumn {
+  riwaya     Riwaya
+  number     Int                           // 1..480
+  hizb       Int                           // 1..60
+  juz        Int                           // 1..30
+  startSurah Int
+  startAyah  Int
+  @@id([riwaya, number])
+  @@map("quran_athman")
+}
+
+/// Provenance of the reference data per riwaya; hifz warns until the sheikh has verified it.
+model QuranDataset {
+  riwaya     Riwaya    @id
+  version    Int
+  verified   Boolean   @default(false)
+  verifiedBy String?
+  verifiedAt DateTime? @db.Date
+  source     Json
+  loadedAt   DateTime  @default(now())
+  @@map("quran_datasets")
+}
+
+// ───────────── Hifz ─────────────
+model HifzSession {
+  id             String        @id @default(uuid(7))
+  schoolId       String
+  school         School        @relation(fields: [schoolId], references: [id])
+  studentId      String
+  student        Student       @relation(fields: [studentId], references: [id])
+  teacherId      String                     // who listened (may have no login)
+  teacher        Teacher       @relation(fields: [teacherId], references: [id])
+  recordedById   String                     // user who typed it
+  recordedBy     User          @relation("HifzRecordedBy", fields: [recordedById], references: [id])
+  classSessionId String?
+  classSession   ClassSession? @relation(fields: [classSessionId], references: [id])
+  date           DateTime      @db.Date
+  notes          String?
+  createdAt      DateTime      @default(now())
+  entries        HifzEntry[]
+  @@index([schoolId, studentId, date])
+  @@index([teacherId, date])
+  @@map("hifz_sessions")
+}
+
+model HifzEntry {
+  id        String        @id @default(uuid(7))
+  sessionId String
+  session   HifzSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type      HifzEntryType
+  riwaya    Riwaya
+  fromSurah Int
+  fromAyah  Int
+  toSurah   Int
+  toAyah    Int
+  fromIndex Int                            // global ayah index (riwaya numbering)
+  toIndex   Int
+  fromThumn Int
+  toThumn   Int
+  rating    Int?                           // 1..5 optional (CHECK)
+  note      String?
+  @@index([sessionId])
+  @@map("hifz_entries")
+}
+
+model StudentHifzSummary {
+  studentId       String    @id
+  student         Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  riwaya          Riwaya
+  memorizedAyahs  Int       @default(0)
+  memorizedAthman Int       @default(0)
+  completedAhzab  Int       @default(0)
+  coverage        Json                     // merged [from,to] global-index intervals
+  currentThumn    Int?
+  lastNewAt       DateTime? @db.Date
+  lastRevisionAt  DateTime? @db.Date
+  updatedAt       DateTime  @updatedAt
+  @@map("student_hifz_summaries")
+}
+
+// ───────────── Communication & content ─────────────
+model MessageLog {
+  id           String      @id @default(uuid(7))
+  schoolId     String
+  school       School      @relation(fields: [schoolId], references: [id])
+  kind         MessageKind
+  phone        String
+  guardianId   String?                     // soft refs: logs are historical
+  studentId    String?
+  paymentId    String?
+  body         String
+  preparedById String
+  preparedBy   User        @relation(fields: [preparedById], references: [id])
+  preparedAt   DateTime    @default(now())
+  @@index([schoolId, preparedAt])
+  @@map("message_logs")
+}
+
+model NewsPost {
+  id          String     @id @default(uuid(7))
+  schoolId    String
+  school      School     @relation(fields: [schoolId], references: [id])
+  title       String
+  slug        String
+  excerpt     String?
+  bodyJson    Json                         // Tiptap document
+  bodyHtml    String                       // sanitised render cache
+  coverUrl    String?
+  category    NewsCategory @default(ANNOUNCEMENT)
+  classId     String?                      // optional: announcement about one imla'
+  class       Class?     @relation(fields: [classId], references: [id], onDelete: SetNull)
+  status      NewsStatus @default(DRAFT)
+  publishedAt DateTime?
+  authorId    String
+  author      User       @relation(fields: [authorId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  @@unique([schoolId, slug])
+  @@index([schoolId, status, publishedAt])
+  @@map("news_posts")
+}
+
+model ImportJob {
+  id          String       @id @default(uuid(7))
+  schoolId    String
+  school      School       @relation(fields: [schoolId], references: [id])
+  fileName    String
+  filePath    String?                      // private copy of the uploaded file (uploads/<school>/imports/…)
+  status      ImportStatus
+  mapping     Json?
+  report      Json?                        // per-row errors / created counts / flagged duplicates
+  createdById String
+  createdBy   User         @relation(fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+  @@index([schoolId, createdAt])
+  @@map("import_jobs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid(7))
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String                        // STUDENT_UPDATE, PAYMENT_VOID...
+  entityType String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  @@index([schoolId, entityType, entityId])
+  @@index([schoolId, createdAt])
+  @@map("audit_logs")
+}

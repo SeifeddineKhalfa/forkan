@@ -1,0 +1,39 @@
+# Development services only. The backend (NestJS) and frontend (Next.js) run on
+# the host with `npm run start:dev` / `npm run dev` for fast reloads on Windows.
+name: forkan-dev
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: forkan
+      POSTGRES_USER: forkan
+      POSTGRES_PASSWORD: forkan
+      TZ: Africa/Tunis
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forkan -d forkan"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+
+  adminer:
+    image: adminer:latest
+    profiles: ["tools"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
