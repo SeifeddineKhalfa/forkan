@@ -158,6 +158,16 @@ enum NewsCategory {
   ASSOCIATION                            // جلسة عامة، انخراط
 }
 
+enum EvaluationKind {
+  EXAM // امتحان: internal exam, usually for one imla'
+  COMPETITION // مسابقة: e.g. the Mawlid competition, open to external contestants
+}
+
+enum EvaluationStatus {
+  OPEN // candidates and score cards can be edited
+  CLOSED // results are final; ADMIN can reopen
+}
+
 // ───────────── School ─────────────
 model School {
   id        String   @id @default(uuid(7))
@@ -191,6 +201,8 @@ model School {
   newsPosts     NewsPost[]
   importJobs    ImportJob[]
   auditLogs     AuditLog[]
+  evaluations   Evaluation[]
+  evaluationCandidates EvaluationCandidate[]
   @@map("schools")
 }
 
@@ -229,6 +241,7 @@ model AcademicYear {
   membershipWindowEnd   DateTime? @db.Date            // e.g. 2027-01-30
   classes        Class[]
   memberships    Membership[]
+  evaluations    Evaluation[]
   @@unique([schoolId, name])
   @@map("academic_years")
 }
@@ -260,6 +273,7 @@ model User {
   newsPosts          NewsPost[]
   importJobs         ImportJob[]
   auditLogs          AuditLog[]
+  evaluationsScored  EvaluationCandidate[] @relation("EvaluationScoredBy")
   @@unique([schoolId, email])
   @@unique([schoolId, phone])
   @@map("users")
@@ -306,6 +320,7 @@ model Teacher {
   classes        ClassTeacher[]
   classSessions  ClassSession[]
   hifzSessions   HifzSession[]
+  evaluationJurors EvaluationJuror[]
   @@index([schoolId, isActive])
   @@map("teachers")
 }
@@ -387,6 +402,7 @@ model Student {
   hifzSummary    StudentHifzSummary?
   memberships    Membership[]
   teacherProfile Teacher?                  // set when this student also teaches
+  evaluations    EvaluationCandidate[]
   @@unique([schoolId, code])
   @@index([schoolId, status])
   @@index([schoolId, lastName, firstName])
@@ -448,6 +464,7 @@ model Class {
   enrollments    Enrollment[]
   sessions       ClassSession[]
   newsPosts      NewsPost[]
+  evaluations    Evaluation[]
   @@unique([schoolId, academicYearId, name])
   @@map("classes")
 }
@@ -653,6 +670,7 @@ model Surah {
   nameAr     String
   nameLatin  String
   ayahCounts SurahAyahCount[]
+  evaluationQuestions EvaluationQuestion[]
   @@map("surahs")
 }
 
@@ -820,4 +838,114 @@ model AuditLog {
   @@index([schoolId, entityType, entityId])
   @@index([schoolId, createdAt])
   @@map("audit_logs")
+}
+
+// ───────────── Exams & competitions (الامتحانات والمسابقات) ─────────────
+/// One sitting: an internal exam or a competition edition, with its branches (الفروع) and jury.
+model Evaluation {
+  id             String           @id @default(uuid(7))
+  schoolId       String
+  school         School           @relation(fields: [schoolId], references: [id])
+  academicYearId String?
+  academicYear   AcademicYear?    @relation(fields: [academicYearId], references: [id])
+  classId        String? // exam of one imla' (optional)
+  class          Class?           @relation(fields: [classId], references: [id])
+  kind           EvaluationKind
+  title          String // "المسابقة المولدية 1448", "امتحان آخر السنة"
+  date           DateTime         @db.Date
+  location       String?
+  status         EvaluationStatus @default(OPEN)
+  notes          String?
+  closedAt       DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  branches   EvaluationBranch[]
+  jurors     EvaluationJuror[]
+  candidates EvaluationCandidate[]
+
+  @@index([schoolId, date])
+  @@map("evaluations")
+}
+
+/// الفرع: a category with its own scale. Defaults follow the school's score card (4 questions, حفظ /14 + تجويد /6).
+model EvaluationBranch {
+  id            String                @id @default(uuid(7))
+  evaluationId  String
+  evaluation    Evaluation            @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  name          String // "60 حزبا", "جزء عمّ"
+  quranScope    String? // free text shown on the card
+  questionCount Int                   @default(4)
+  hifzMax       Decimal               @default(14) @db.Decimal(5, 2)
+  tajwidMax     Decimal               @default(6) @db.Decimal(5, 2)
+  passScore     Decimal?              @db.Decimal(5, 2) // on the total; null = no pass mark
+  sortOrder     Int                   @default(0)
+  candidates    EvaluationCandidate[]
+
+  @@unique([evaluationId, name])
+  @@map("evaluation_branches")
+}
+
+/// لجنة التحكيم: names are kept even for jurors who are not teachers of the school.
+model EvaluationJuror {
+  id           String     @id @default(uuid(7))
+  evaluationId String
+  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  teacherId    String? // set → that teacher can fill score cards
+  teacher      Teacher?   @relation(fields: [teacherId], references: [id])
+  name         String
+  isPresident  Boolean    @default(false)
+  sortOrder    Int        @default(0)
+
+  @@index([evaluationId])
+  @@index([teacherId])
+  @@map("evaluation_jurors")
+}
+
+/// المتسابق: an enrolled student or an external contestant, with the jury's single score card.
+model EvaluationCandidate {
+  id           String               @id @default(uuid(7))
+  schoolId     String
+  school       School               @relation(fields: [schoolId], references: [id])
+  evaluationId String
+  evaluation   Evaluation           @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  branchId     String
+  branch       EvaluationBranch     @relation(fields: [branchId], references: [id])
+  number       Int // order of passage, 1.. per evaluation
+  studentId    String? // null = external contestant
+  student      Student?             @relation(fields: [studentId], references: [id])
+  fullName     String // snapshot for students, typed for externals
+  gender       Gender?
+  phone        String?
+  absent       Boolean              @default(false)
+  hifzScore    Decimal?             @db.Decimal(5, 2)
+  tajwidScore  Decimal?             @db.Decimal(5, 2)
+  notes        String? // الملاحظات
+  scoredAt     DateTime?
+  scoredById   String?
+  scoredBy     User?                @relation("EvaluationScoredBy", fields: [scoredById], references: [id])
+  createdAt    DateTime             @default(now())
+  questions    EvaluationQuestion[]
+
+  @@unique([evaluationId, number])
+  @@unique([evaluationId, studentId])
+  @@index([branchId])
+  @@index([studentId])
+  @@map("evaluation_candidates")
+}
+
+/// One row of the card: the passage asked (surah + ayah) and the mistakes noted.
+model EvaluationQuestion {
+  id          String              @id @default(uuid(7))
+  candidateId String
+  candidate   EvaluationCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  number      Int
+  surahId     Int?
+  surah       Surah?              @relation(fields: [surahId], references: [id])
+  ayah        Int?
+  mistakes    String? // الأخطاء و التنبيهات
+  note        String?
+
+  @@unique([candidateId, number])
+  @@map("evaluation_questions")
 }

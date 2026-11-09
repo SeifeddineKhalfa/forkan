@@ -24,6 +24,8 @@ export const TENANT_MODELS = new Set<string>([
   'NewsPost',
   'ImportJob',
   'AuditLog',
+  'Evaluation',
+  'EvaluationCandidate',
 ]);
 
 const WHERE_OPS = new Set([

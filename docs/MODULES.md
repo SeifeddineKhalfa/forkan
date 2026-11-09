@@ -12,6 +12,7 @@ Details and rules are in [SPEC.md](SPEC.md); build history in [PROGRESS.md](PROG
 | Excel import | `/imports` | office | Upload the association's Excel sheets, map columns, review warnings, import |
 | Attendance | `/attendance` | all | Day view with week strip; open a session, everyone present, tap absentees, save; cancel a session (optionally published as news); WhatsApp absence message |
 | Hifz | `/hifz` | all | Per class and per student: entries by surah/ayah, hizb/thumn or page, 60×8 athman grid, position, days since new memorisation; PDF report |
+| Exams & competitions | `/evaluations` | all (teachers: where they sit on the jury) | Internal exams and competitions (e.g. the Mawlid): branches (الفروع) with their own scale (default 4 questions, حفظ /14 + تجويد /6), students or outside contestants, jury; the «بطاقة تقييم» filled on screen or printed blank/filled; ranking per branch; close to freeze results |
 | المصحف المعلّم | `/mushaf` | all | Ayah-by-ayah Qalun recitation with repetition pauses, by surah or by hizb/thumn — see [MUSHAF-MUALLIM.md](MUSHAF-MUALLIM.md) |
 | Fees | `/fees` | office | Fee items per class, monthly charges generated daily (idempotent), manual charges, cancellations |
 | Memberships | `/memberships` | office | Yearly membership (انخراط) fee and numbers, printable cards |
@@ -28,6 +29,7 @@ Details and rules are in [SPEC.md](SPEC.md); build history in [PROGRESS.md](PROG
   the student's current thumn in المصحف المعلّم.
 - **Office, a parent pays:** Ctrl+K → student name → دفعة (or لوحة القيادة → تسجيل دفعة) →
   «كامل المستحق» → method → حفظ → send the receipt by WhatsApp.
+- **Jury, competition day:** الامتحانات والمسابقات → the competition → البطاقة on candidate 01 → passages, mistakes, حفظ and تجويد → «حفظ والمرور إلى الموالي».
 - **Office, end of month:** المدفوعات → تذكيرات الدفع → WhatsApp each family.
 
 ## Shortcuts

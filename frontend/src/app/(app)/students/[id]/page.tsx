@@ -9,6 +9,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { RoleGate } from "@/components/app-shell/role-gate";
 import { StudentAttendanceCard } from "@/components/attendance/attendance-views";
+import { StudentEvaluations } from "@/components/evaluations/student-evaluations";
 import { StudentHifz } from "@/components/hifz/student-hifz";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -153,6 +154,7 @@ function StudentProfile() {
           <TabsTrigger value="payments">{t("tabs.payments")}</TabsTrigger>
           <TabsTrigger value="hifz">{t("tabs.hifz")}</TabsTrigger>
           <TabsTrigger value="attendance">{t("tabs.attendance")}</TabsTrigger>
+          <TabsTrigger value="evaluations">{t("tabs.evaluations")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="grid gap-6 lg:grid-cols-2">
@@ -248,6 +250,10 @@ function StudentProfile() {
 
         <TabsContent value="hifz">
           <StudentHifz studentId={s.id} name={`${s.firstName} ${s.lastName}`} />
+        </TabsContent>
+
+        <TabsContent value="evaluations">
+          <StudentEvaluations studentId={s.id} />
         </TabsContent>
       </Tabs>
 

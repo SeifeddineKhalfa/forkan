@@ -1,4 +1,5 @@
 import {
+  Award,
   BookMarked,
   BookOpenText,
   CalendarCheck,
@@ -42,6 +43,7 @@ export const NAV: NavItem[] = [
   { href: "/classes", label: "classes", teacherLabel: "myClasses", icon: BookOpenText, roles: ALL, group: "teaching" },
   { href: "/attendance", label: "attendance", icon: CalendarCheck, roles: ALL, group: "teaching" },
   { href: "/hifz", label: "hifz", icon: BookMarked, roles: ALL, group: "teaching" },
+  { href: "/evaluations", label: "evaluations", icon: Award, roles: ALL, group: "teaching" },
   { href: "/mushaf", label: "mushaf", icon: Headphones, roles: ALL, group: "teaching" },
   { href: "/students", label: "students", icon: Users, roles: OFFICE, group: "people" },
   { href: "/teachers", label: "teachers", icon: GraduationCap, roles: OFFICE, group: "people" },

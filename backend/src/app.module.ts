@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { ApiExceptionFilter } from './common/api-exception.filter.js';
 import { validateEnv } from './config/env.js';
 import { HealthController } from './health.controller.js';
+import { EvaluationsModule } from './evaluations/evaluations.module.js';
 import { HifzModule } from './hifz/hifz.module.js';
 import { QuranModule } from './quran/quran.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -61,6 +62,7 @@ import { UsersModule } from './users/users.module.js';
     QuranModule,
     HifzModule,
     NewsModule,
+    EvaluationsModule,
   ],
   controllers: [HealthController],
   providers: [
