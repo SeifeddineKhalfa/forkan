@@ -556,3 +556,126 @@ export interface NewsPostDetail extends Omit<NewsAdminItem, "author"> {
   bodyJson: { type: "doc"; content?: unknown[] };
   bodyHtml: string;
 }
+
+// ───────────── Exams & competitions ─────────────
+export type EvaluationKind = "EXAM" | "COMPETITION";
+export type EvaluationStatus = "OPEN" | "CLOSED";
+export type CandidateState = "SCORED" | "PENDING" | "ABSENT";
+
+export interface EvaluationBranch {
+  id: string;
+  name: string;
+  quranScope: string | null;
+  questionCount: number;
+  hifzMax: string;
+  tajwidMax: string;
+  passScore: string | null;
+  sortOrder: number;
+  maxTotal: string;
+  candidates?: number;
+}
+
+export interface EvaluationJuror {
+  id: string;
+  name: string;
+  isPresident: boolean;
+  teacherId: string | null;
+}
+
+export interface EvaluationListItem {
+  id: string;
+  kind: EvaluationKind;
+  title: string;
+  date: string;
+  location: string | null;
+  status: EvaluationStatus;
+  class: { id: string; name: string } | null;
+  branches: { id: string; name: string }[];
+  candidates: number;
+  cardsDone: number;
+}
+
+export interface EvaluationCandidate {
+  id: string;
+  number: number;
+  branchId: string;
+  studentId: string | null;
+  studentCode: string | null;
+  fullName: string;
+  gender: Gender | null;
+  phone: string | null;
+  absent: boolean;
+  hifzScore: string | null;
+  tajwidScore: string | null;
+  notes: string | null;
+  scoredAt: string | null;
+  questionsFilled: number;
+  state: CandidateState;
+  total: string | null;
+  passed: boolean | null;
+}
+
+export interface EvaluationDetail {
+  id: string;
+  kind: EvaluationKind;
+  title: string;
+  date: string;
+  location: string | null;
+  notes: string | null;
+  status: EvaluationStatus;
+  closedAt: string | null;
+  class: { id: string; name: string } | null;
+  academicYear: { id: string; name: string } | null;
+  branches: EvaluationBranch[];
+  jurors: EvaluationJuror[];
+  candidates: EvaluationCandidate[];
+  canManage: boolean;
+  canScore: boolean;
+}
+
+export interface EvaluationQuestion {
+  number: number;
+  surahId: number | null;
+  ayah: number | null;
+  mistakes: string | null;
+  note: string | null;
+}
+
+export interface EvaluationCard {
+  evaluation: { id: string; title: string; kind: EvaluationKind; date: string; status: EvaluationStatus };
+  branch: EvaluationBranch;
+  candidate: EvaluationCandidate;
+  questions: EvaluationQuestion[];
+  scoredBy: { firstName: string; lastName: string } | null;
+  canScore: boolean;
+}
+
+export interface EvaluationResults {
+  evaluation: Pick<EvaluationDetail, "id" | "title" | "kind" | "date" | "location" | "status" | "class">;
+  jurors: EvaluationJuror[];
+  branches: {
+    branch: EvaluationBranch;
+    rows: (EvaluationCandidate & { rank: number | null })[];
+    stats: {
+      candidates: number;
+      scored: number;
+      absent: number;
+      pending: number;
+      passed: number | null;
+      average: string | null;
+      best: string | null;
+    };
+  }[];
+}
+
+export interface StudentEvaluation extends EvaluationCandidate {
+  evaluation: { id: string; title: string; kind: EvaluationKind; date: string; status: EvaluationStatus };
+  branch: { id: string; name: string; maxTotal: string; passScore: string | null };
+}
+
+export interface EvaluationCards {
+  evaluation: Pick<EvaluationDetail, "id" | "title" | "kind" | "date" | "location" | "status">;
+  branches: EvaluationBranch[];
+  jurors: EvaluationJuror[];
+  cards: { candidate: EvaluationCandidate; questions: EvaluationQuestion[] }[];
+}

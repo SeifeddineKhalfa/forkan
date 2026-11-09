@@ -4,7 +4,7 @@ Management app for the Quranic association of Soliman: students, imla'at (classe
 fees and memberships, receipts, attendance and hifz tracking, plus a public news site.
 
 - **Specification and build plan:** [docs/SPEC.md](docs/SPEC.md) (Part A = spec, Part B = slices)
-- **Status:** Slices 0–7 done, plus the «رَقّ» UI theme and «المصحف المعلّم»; next is Slice 8
+- **Status:** Slices 0–7 done, plus the «رَقّ» UI theme, «المصحف المعلّم» and exams & competitions; next is Slice 8
   (production hardening) — see [docs/PROGRESS.md](docs/PROGRESS.md)
 - **Modules guide:** [docs/MODULES.md](docs/MODULES.md) · **UI guide:** [docs/UI-GUIDE.md](docs/UI-GUIDE.md) ·
   **المصحف المعلّم:** [docs/MUSHAF-MUALLIM.md](docs/MUSHAF-MUALLIM.md)

@@ -307,6 +307,36 @@ Not verified: ayah cut points by ear (needs the sheikh's ear on a few surahs).
 
 New docs: [UI-GUIDE.md](UI-GUIDE.md), [MODULES.md](MODULES.md), [MUSHAF-MUALLIM.md](MUSHAF-MUALLIM.md).
 
+## Exams & competitions (Phase 2, started early) ✅ (2026-11-09)
+
+Built from the school's paper score card `docs/بطاقة التقييم_111341.docx` (contestant, الفرع, 4 questions with
+surah + ayah and mistakes, حفظ /14 + تجويد /6 = /20, notes, jury signatures). Decisions (2026-11-09): one
+engine for internal exams **and** competitions; **one card per candidate filled by the whole jury**
+(not one per judge); **one حفظ mark and one تجويد mark per card** (not per question); scale set **per branch**.
+
+Delivered:
+- Schema (migration `evaluations`): `Evaluation` (kind EXAM/COMPETITION, optional imla' and year, OPEN/CLOSED),
+  `EvaluationBranch` (question count, hifz/tajwid maxima, optional pass mark), `EvaluationJuror` (school teacher
+  or outside guest, one president), `EvaluationCandidate` (student or external, order of passage from counter
+  `evaluation:<id>`, scores, notes), `EvaluationQuestion`. CHECKs: both marks together, none when absent, scale > 0,
+  pass mark ≤ total.
+- `src/evaluations/scoring.ts` (pure, unit-tested): validation against the branch scale, total, pass/fail,
+  ranking with shared ranks (1, 1, 3) then pending then absent. No tie-break rule (none given by the school).
+- API `/evaluations…`: CRUD (delete: ADMIN, only before any card), branches, jury, candidates (one by one,
+  external, or all active students of an imla'), score card (ayah checked against the school riwaya),
+  results, all cards for printing, `/students/:id/evaluations`. Close = STAFF, reopen = ADMIN; closed
+  evaluations refuse every change. Teachers see and score only the evaluations where they are jurors.
+  Lowering a branch maximum or question count is refused if filled cards would no longer fit.
+- UI: «الامتحانات والمسابقات» (teaching section of the menu): list cards with progress, creation dialog
+  (branches + jury), detail with tabs (المتسابقون / الفروع / لجنة التحكيم), score card page laid out like the sheet
+  with live total and «حفظ والمرور إلى الموالي», results per branch (print), printable cards (two per A4
+  landscape page, blank for the jury or filled), «الامتحانات» tab on the student profile.
+- Tests: `scoring.spec.ts` (8), `test/evaluations.e2e-spec.ts` (8).
+
+Open questions for the school:
+- Grade labels (ممتاز، حسن جدّاً…) and their thresholds, and a tie-break rule for prizes (e.g. higher حفظ first).
+- Certificates and prize lists (spec Phase 2) are not built yet.
+
 ## Open questions for the school
 
 1. Domain name and server (needed for HTTPS, share links, sitemap).
