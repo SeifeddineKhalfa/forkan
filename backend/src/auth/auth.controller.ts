@@ -73,6 +73,7 @@ export class AuthController {
   }
 
   @AllowPendingPassword()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('change-password')
   @HttpCode(200)
   async changePassword(

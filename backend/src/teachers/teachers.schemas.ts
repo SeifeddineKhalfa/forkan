@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { passwordSchema } from '../auth/password.schema.js';
-import { blankToUndefined, id, isoDate, money, phoneSchema } from '../common/schemas.js';
+import { blankToUndefined, id, isoDate, money, patchOf, phoneSchema } from '../common/schemas.js';
 
 const riwaya = z.enum(['QALUN', 'WARSH', 'HAFS']);
 
@@ -32,9 +32,7 @@ export const createTeacherSchema = z.object({
   login: loginSchema.optional(),
 });
 
-export const updateTeacherSchema = z
-  .object(teacherFields)
-  .partial()
+export const updateTeacherSchema = patchOf(z.object(teacherFields))
   .extend({
     isActive: z.boolean().optional(),
     studentId: id.nullable().optional(),

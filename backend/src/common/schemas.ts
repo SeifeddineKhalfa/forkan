@@ -25,10 +25,29 @@ export const isoDate = z.iso.date().transform((v) => new Date(`${v}T00:00:00.000
 
 /** TND amounts with up to 3 decimals (millimes), passed to Prisma as strings. */
 export const money = z
-  .union([z.number().nonnegative(), z.string().trim().regex(/^\d+(\.\d{1,3})?$/)])
-  .transform((v) => String(v));
+  .union([z.number().nonnegative(), z.string().trim()])
+  .transform((v) => String(v))
+  // Checked after String(): a JSON number like 0.0004 must not slip past the 3-decimal rule.
+  .pipe(z.string().regex(/^\d+(\.\d{1,3})?$/));
 
-export const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+type NoDefault<T> = T extends z.ZodDefault<infer Inner> ? Inner : T;
+type PatchShape<S extends z.ZodRawShape> = { [K in keyof S]: z.ZodOptional<NoDefault<S[K]>> };
+
+/**
+ * `.partial()` for PATCH bodies. Zod's own `.partial()` still applies `.default()`s, so a body
+ * like `{ isActive: false }` would come out with every create-time default filled in and
+ * silently reset fields the client never sent. Here a field that is not sent stays undefined.
+ */
+export function patchOf<S extends z.ZodRawShape>(schema: z.ZodObject<S>): z.ZodObject<PatchShape<S>> {
+  const shape: Record<string, z.ZodType> = {};
+  for (const [key, field] of Object.entries(schema.shape)) {
+    const inner = field instanceof z.ZodDefault ? (field.unwrap() as z.ZodType) : (field as z.ZodType);
+    shape[key] = inner.optional();
+  }
+  return z.object(shape) as unknown as z.ZodObject<PatchShape<S>>;
+}
+
+export const hhmm =z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
 export const id = z.string().uuid();
 

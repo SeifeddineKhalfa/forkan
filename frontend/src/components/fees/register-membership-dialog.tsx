@@ -59,7 +59,7 @@ function Body({ onOpenChange, student, year }: Props) {
       }),
     onSuccess: (m) => {
       toast.success(t("registered", { number: m.memberNumber }));
-      for (const key of ["memberships", "account", "charges", "classes"]) void qc.invalidateQueries({ queryKey: [key] });
+      for (const key of ["memberships", "account", "charges", "classes", "finance"]) void qc.invalidateQueries({ queryKey: [key] });
       onOpenChange(false);
     },
   });

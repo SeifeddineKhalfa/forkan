@@ -68,6 +68,7 @@ function ChargeDialogBody({ target, onOpenChange }: { target: ChargeTarget; onOp
       else toast.success(tc("saved"));
       void qc.invalidateQueries({ queryKey: ["charges"] });
       void qc.invalidateQueries({ queryKey: ["account"] });
+      void qc.invalidateQueries({ queryKey: ["finance"] });
       onOpenChange(false);
     },
   });

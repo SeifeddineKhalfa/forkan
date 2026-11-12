@@ -122,7 +122,7 @@ export class ImportsService {
     if (errors > 0 && !opts.skipErrors) {
       throw new ApiError(HttpStatus.UNPROCESSABLE_ENTITY, 'IMPORT_HAS_ERRORS', { errors });
     }
-    const created = await this.apply(actor, plan);
+    const created = await this.apply(actor, id, plan);
     const report = { counts: plan.counts, created, skippedRows: plan.students.filter((s) => s.status === 'ERROR').map((s) => s.row) };
     await this.prisma.forSchool(actor.schoolId).importJob.update({
       where: { id },
@@ -193,11 +193,17 @@ export class ImportsService {
   }
 
   /** Everything or nothing: one transaction for the whole file. */
-  private apply(actor: AuthUser, plan: ImportPlan) {
+  private apply(actor: AuthUser, jobId: string, plan: ImportPlan) {
     const schoolId = actor.schoolId;
     const db = this.prisma.forSchool(schoolId);
     return db.$transaction(
       async (tx) => {
+        // Claim the job inside the transaction: a double submit must not import the file twice.
+        const claimed = await tx.importJob.updateMany({
+          where: { id: jobId, status: { not: 'COMMITTED' } },
+          data: { status: 'COMMITTED' },
+        });
+        if (claimed.count !== 1) throw new ApiError(HttpStatus.CONFLICT, 'IMPORT_ALREADY_COMMITTED');
         const created = { students: 0, teachers: 0, guardians: 0, enrollments: 0, charges: 0 };
 
         for (const t of plan.teachers) {

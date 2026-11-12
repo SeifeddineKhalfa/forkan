@@ -2,7 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { fileTypeFromBuffer } from 'file-type';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { ApiError } from '../common/api-error.js';
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -53,7 +53,7 @@ export class FilesService {
   /** Resolves inside the upload root only (no path traversal). */
   absolute(relative: string) {
     const full = resolve(this.root, relative);
-    if (!full.startsWith(this.root)) throw new ApiError(HttpStatus.BAD_REQUEST, 'INVALID_PATH');
+    if (!full.startsWith(this.root + sep)) throw new ApiError(HttpStatus.BAD_REQUEST, 'INVALID_PATH');
     return full;
   }
 }

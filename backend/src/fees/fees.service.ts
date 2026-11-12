@@ -159,6 +159,12 @@ export class FeesService {
       throw new ApiError(HttpStatus.UNPROCESSABLE_ENTITY, 'CHARGE_HAS_PAYMENTS');
     }
     const charge = await db.$transaction(async (tx) => {
+      // Re-check under the lock: a payment may have landed on this charge meanwhile.
+      const [locked] = await tx.$queryRaw<{ paidAmount: Prisma.Decimal }[]>`
+        SELECT "paidAmount" FROM "charges" WHERE "id" = ${id} AND "schoolId" = ${actor.schoolId} FOR UPDATE`;
+      if (!locked || new Prisma.Decimal(locked.paidAmount).gt(0)) {
+        throw new ApiError(HttpStatus.UNPROCESSABLE_ENTITY, 'CHARGE_HAS_PAYMENTS');
+      }
       // A cancelled membership fee means the student is not a member that year.
       if (before.membership) await tx.membership.delete({ where: { id: before.membership.id } });
       return tx.charge.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason } });

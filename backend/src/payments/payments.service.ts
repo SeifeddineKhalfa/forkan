@@ -130,7 +130,10 @@ export class PaymentsService {
     if (before.voidedAt) throw new ApiError(HttpStatus.CONFLICT, 'PAYMENT_ALREADY_VOIDED');
 
     const allocations = await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "payments" WHERE "id" = ${id} FOR UPDATE`;
+      // Re-check under the lock: two voids at once must not reverse the allocations twice.
+      const [locked] = await tx.$queryRaw<{ voidedAt: Date | null }[]>`
+        SELECT "voidedAt" FROM "payments" WHERE "id" = ${id} FOR UPDATE`;
+      if (locked?.voidedAt) throw new ApiError(HttpStatus.CONFLICT, 'PAYMENT_ALREADY_VOIDED');
       const reversed = await reverseAllocations(tx, id);
       await tx.payment.update({
         where: { id },

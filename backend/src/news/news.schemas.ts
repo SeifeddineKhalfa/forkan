@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { blankToUndefined, id, listQuery } from '../common/schemas.js';
+import { blankToUndefined, id, listQuery, patchOf } from '../common/schemas.js';
 import type { TiptapNode } from './tiptap-html.js';
 
 const category = z.enum(['ANNOUNCEMENT', 'ACTIVITY', 'THANKS', 'CONDOLENCE', 'ASSOCIATION']);
@@ -17,8 +17,7 @@ export const newsSchema = z.object({
   classId: blankToUndefined(id),
 });
 
-export const updateNewsSchema = newsSchema
-  .partial()
+export const updateNewsSchema = patchOf(newsSchema)
   .extend({ excerpt: z.string().trim().max(300).nullable().optional(), classId: id.nullable().optional() });
 
 export const newsListQuery = listQuery.extend({

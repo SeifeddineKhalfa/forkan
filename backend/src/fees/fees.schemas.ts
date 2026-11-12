@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { blankToUndefined, id, isoDate, listQuery, money } from '../common/schemas.js';
+import { blankToUndefined, id, isoDate, listQuery, money, patchOf } from '../common/schemas.js';
 
 export const feeItemSchema = z.object({
   name: z.string().trim().min(1).max(120),
   defaultAmount: money,
 });
 
-export const updateFeeItemSchema = feeItemSchema.partial().extend({ isActive: z.boolean().optional() });
+export const updateFeeItemSchema = patchOf(feeItemSchema).extend({ isActive: z.boolean().optional() });
 
 /** A one-off charge: from the catalog (amount defaults to the item's) or free text. */
 const oneOffFields = {

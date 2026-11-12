@@ -88,10 +88,12 @@ export class AuthService {
     }
     if (token.expiresAt < new Date() || !token.user.isActive) throw invalidSession();
 
-    await this.prisma.refreshToken.update({
-      where: { id: token.id },
+    // Atomic rotation: of two concurrent refreshes with the same token, only one wins.
+    const rotated = await this.prisma.refreshToken.updateMany({
+      where: { id: token.id, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    if (rotated.count !== 1) throw invalidSession();
     return {
       user: publicUser(token.user),
       tokens: await this.issue(token.user, token.familyId, userAgent),
@@ -141,7 +143,14 @@ export class AuthService {
     const p = await this.jwt.verifyAsync<AccessPayload>(token, {
       secret: this.config.get('JWT_ACCESS_SECRET'),
     });
-    return { id: p.sub, schoolId: p.sid, role: p.role, mustChangePassword: p.mcp };
+    // Re-read the user so that deactivation, a role change or an admin password reset
+    // takes effect now, not when the 15-minute access token expires (one PK lookup).
+    const user = await this.prisma.forSchool(p.sid).user.findUnique({
+      where: { id: p.sub },
+      select: { isActive: true, role: true, mustChangePassword: true },
+    });
+    if (!user?.isActive) throw invalidSession();
+    return { id: p.sub, schoolId: p.sid, role: user.role, mustChangePassword: user.mustChangePassword };
   }
 
   private async issue(user: User, familyId: string, userAgent?: string): Promise<IssuedTokens> {

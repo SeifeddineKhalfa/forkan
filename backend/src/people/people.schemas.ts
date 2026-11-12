@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { blankToUndefined, id, isoDate, listQuery, money, phoneSchema } from '../common/schemas.js';
+import { blankToUndefined, id, isoDate, listQuery, money, patchOf, phoneSchema } from '../common/schemas.js';
 
 const name = z.string().trim().min(1).max(80);
 const relation = z.enum(['FATHER', 'MOTHER', 'BROTHER', 'SISTER', 'GRANDPARENT', 'UNCLE', 'AUNT', 'OTHER']);
@@ -11,7 +11,7 @@ export const guardianSchema = z.object({
   notes: blankToUndefined(z.string().trim().max(1000)),
 });
 
-export const updateGuardianSchema = guardianSchema.partial().extend({ phone2: phoneSchema.nullable().optional() });
+export const updateGuardianSchema = patchOf(guardianSchema).extend({ phone2: phoneSchema.nullable().optional() });
 
 export const guardianSearchQuery = z.object({
   phone: z.string().trim().max(30).optional(),
@@ -55,9 +55,7 @@ export const createStudentSchema = z.object({
   classId: blankToUndefined(id),
 });
 
-export const updateStudentSchema = z
-  .object(studentFields)
-  .partial()
+export const updateStudentSchema = patchOf(z.object(studentFields))
   .extend({
     status: z.enum(['ACTIVE', 'INACTIVE', 'GRADUATED', 'LEFT']).optional(),
     dateOfBirth: isoDate.nullable().optional(),

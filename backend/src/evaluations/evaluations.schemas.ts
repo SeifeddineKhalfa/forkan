@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import { blankToUndefined, id, isoDate, phoneSchema } from '../common/schemas.js';
+import { blankToUndefined, id, isoDate, patchOf, phoneSchema } from '../common/schemas.js';
 
 /** Marks and scales with up to 2 decimals (e.g. 12.5, 4.25), passed to Prisma as strings. */
 const mark = z
-  .union([z.number().nonnegative(), z.string().trim().regex(/^\d+(\.\d{1,2})?$/)])
+  .union([z.number().nonnegative(), z.string().trim()])
   .transform((v) => String(v))
+  .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/))
   .refine((v) => Number(v) <= 999, { message: 'TOO_LARGE' });
 
 const text = (max: number) => blankToUndefined(z.string().trim().max(max));
@@ -19,7 +20,7 @@ export const branchSchema = z.object({
   passScore: mark.nullable().default(null),
   sortOrder: z.number().int().min(0).max(999).optional(),
 });
-export const updateBranchSchema = branchSchema.partial();
+export const updateBranchSchema = patchOf(branchSchema);
 
 export const jurorSchema = z.object({
   teacherId: blankToUndefined(id),

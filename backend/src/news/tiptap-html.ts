@@ -23,6 +23,13 @@ const BLOCKS: Record<string, string> = {
 };
 const MARKS: Record<string, string> = { bold: 'strong', italic: 'em', underline: 'u', strike: 's' };
 
+/** Own keys only: a node type like "constructor" must not hit Object.prototype. */
+const tagOf = (table: Record<string, string>, type: unknown) =>
+  typeof type === 'string' && Object.hasOwn(table, type) ? table[type] : undefined;
+const childrenOf = (node: TiptapNode) => (Array.isArray(node.content) ? node.content : []);
+/** Deeper documents are cut off instead of overflowing the stack. */
+const MAX_DEPTH = 40;
+
 export function safeHref(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const href = raw.trim();
@@ -30,10 +37,11 @@ export function safeHref(raw: unknown): string | null {
 }
 
 function renderText(node: TiptapNode): string {
-  let html = e(node.text ?? '');
-  for (const mark of node.marks ?? []) {
-    if (MARKS[mark.type]) html = `<${MARKS[mark.type]}>${html}</${MARKS[mark.type]}>`;
-    else if (mark.type === 'link') {
+  let html = e(typeof node.text === 'string' ? node.text : '');
+  for (const mark of Array.isArray(node.marks) ? node.marks : []) {
+    const tag = tagOf(MARKS, mark?.type);
+    if (tag) html = `<${tag}>${html}</${tag}>`;
+    else if (mark?.type === 'link') {
       const href = safeHref(mark.attrs?.href);
       if (href) html = `<a href="${e(href)}" rel="noopener nofollow" target="_blank">${html}</a>`;
     }
@@ -41,8 +49,12 @@ function renderText(node: TiptapNode): string {
   return html;
 }
 
-function render(node: TiptapNode): string {
-  const inner = () => (node.content ?? []).map(render).join('');
+function render(node: TiptapNode, depth = 0): string {
+  if (!node || typeof node !== 'object' || depth > MAX_DEPTH) return '';
+  const inner = () =>
+    childrenOf(node)
+      .map((child) => render(child, depth + 1))
+      .join('');
   switch (node.type) {
     case 'doc':
       return inner();
@@ -58,16 +70,18 @@ function render(node: TiptapNode): string {
       return `<h${level}>${inner()}</h${level}>`;
     }
     default:
-      return BLOCKS[node.type] ? `<${BLOCKS[node.type]}>${inner()}</${BLOCKS[node.type]}>` : inner();
+      const tag = tagOf(BLOCKS, node.type);
+      return tag ? `<${tag}>${inner()}</${tag}>` : inner();
   }
 }
 
 export const tiptapToHtml = (doc: TiptapNode) => render(doc);
 
 /** Plain text (excerpts, WhatsApp copy, search). */
-export function tiptapToText(node: TiptapNode): string {
-  if (node.type === 'text') return node.text ?? '';
+export function tiptapToText(node: TiptapNode, depth = 0): string {
+  if (!node || typeof node !== 'object' || depth > MAX_DEPTH) return '';
+  if (node.type === 'text') return typeof node.text === 'string' ? node.text : '';
   if (node.type === 'hardBreak') return '\n';
-  const parts = (node.content ?? []).map(tiptapToText);
+  const parts = childrenOf(node).map((child) => tiptapToText(child, depth + 1));
   return ['paragraph', 'heading', 'listItem', 'blockquote'].includes(node.type) ? `${parts.join('')}\n` : parts.join('');
 }

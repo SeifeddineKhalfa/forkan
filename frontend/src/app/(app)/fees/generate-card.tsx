@@ -26,6 +26,7 @@ export function GenerateCard() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["charges"] });
       void qc.invalidateQueries({ queryKey: ["account"] });
+      void qc.invalidateQueries({ queryKey: ["finance"] });
     },
   });
 
