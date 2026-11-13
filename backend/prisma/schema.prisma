@@ -920,6 +920,7 @@ model EvaluationCandidate {
   absent       Boolean              @default(false)
   hifzScore    Decimal?             @db.Decimal(5, 2)
   tajwidScore  Decimal?             @db.Decimal(5, 2)
+  totalScore   Decimal?             @db.Decimal(5, 2) // final mark (حفظ + تجويد), stored when the card is complete
   notes        String? // الملاحظات
   scoredAt     DateTime?
   scoredById   String?
@@ -944,6 +945,8 @@ model EvaluationQuestion {
   surah       Surah?              @relation(fields: [surahId], references: [id])
   ayah        Int?
   mistakes    String? // الأخطاء و التنبيهات
+  tanbihCount Int                 @default(0) // تنبيهات: each one costs MISTAKE_PENALTY on حفظ
+  tashihCount Int                 @default(0) // تصليحات: each one costs MISTAKE_PENALTY on حفظ
   note        String?
 
   @@unique([candidateId, number])

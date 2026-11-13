@@ -204,7 +204,14 @@ function PaperCard({
             <tr key={i} className="h-9">
               <td className={`${cell} text-center font-bold`} dir="ltr">{String(i + 1).padStart(2, "0")}</td>
               <td className={cell}>{passage(q)}</td>
-              <td className={`${cell} text-xs`}>{scores ? q?.mistakes : ""}</td>
+              <td className={`${cell} text-xs`}>
+                {scores && q && (q.tanbihCount > 0 || q.tashihCount > 0) && (
+                  <span className="block font-bold">
+                    {t("tanbih")}: {q.tanbihCount} · {t("tashih")}: {q.tashihCount}
+                  </span>
+                )}
+                {scores ? q?.mistakes : ""}
+              </td>
               {/* One mark for the whole card: the column spans every question. */}
               {i === 0 && (
                 <>

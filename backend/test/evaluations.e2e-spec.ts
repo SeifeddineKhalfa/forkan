@@ -4,7 +4,8 @@ import { type Agent, bootApp, createUser, ensureSchool, H, loginAs, newPrisma } 
 
 /**
  * Exams & competitions on the school's «بطاقة تقييم»: one card per candidate, filled by the jury,
- * حفظ /14 + تجويد /6 = /20 by default, scale set per branch (الفرع).
+ * حفظ /14 + تجويد /6 = /20 by default, scale set per branch (الفرع). حفظ is computed: 14 split over the
+ * 4 questions, 0.25 off per تنبيه or تصليح; the jury types تجويد and the final mark is stored.
  */
 describe('Evaluations (e2e)', () => {
   let app: INestApplication;
@@ -99,24 +100,25 @@ describe('Evaluations (e2e)', () => {
 
   it('validates a card against the branch scale and the Qalun ayah counts', async () => {
     const c1 = await cardOf(1);
-    await save(staff, c1, { hifzScore: 14.5, tajwidScore: 5 }).expect(400, /SCORE_ABOVE_MAX/);
-    await save(staff, c1, { hifzScore: 12 }).expect(400, /SCORE_INCOMPLETE/);
-    await save(staff, c1, { absent: true, hifzScore: 3, tajwidScore: 1 }).expect(400, /ABSENT_WITH_SCORE/);
-    await save(staff, c1, { hifzScore: 12, tajwidScore: 5, questions: [{ number: 5, surahId: 2, ayah: 1 }] }).expect(400, /QUESTION_NUMBER_INVALID/);
+    await save(staff, c1, { tajwidScore: 6.25 }).expect(400, /SCORE_ABOVE_MAX/);
+    await save(staff, c1, { absent: true, tajwidScore: 1 }).expect(400, /ABSENT_WITH_SCORE/);
+    await save(staff, c1, { questions: [{ number: 1, tanbihCount: -1 }] }).expect(400);
+    await save(staff, c1, { tajwidScore: 5, questions: [{ number: 5, surahId: 2, ayah: 1 }] }).expect(400, /QUESTION_NUMBER_INVALID/);
     // Al-Baqara has 285 ayahs in Qalun (286 in Hafs).
-    await save(staff, c1, { hifzScore: 12, tajwidScore: 5, questions: [{ number: 1, surahId: 2, ayah: 286 }] }).expect(400, /AYAH_OUT_OF_RANGE/);
+    await save(staff, c1, { tajwidScore: 5, questions: [{ number: 1, surahId: 2, ayah: 286 }] }).expect(400, /AYAH_OUT_OF_RANGE/);
 
-    const ok = await save(staff, c1, {
-      hifzScore: 12.5,
-      tajwidScore: 5,
-      notes: 'حفظ متين',
-      questions: [
-        { number: 1, surahId: 2, ayah: 255, mistakes: 'تردّد في الآية 257' },
-        { number: 2, surahId: 18, ayah: 1 },
-        { number: 3 }, // empty rows are not stored
-      ],
-    }).expect(200);
-    expect(ok.body.candidate).toMatchObject({ state: 'SCORED', total: '17.5', passed: true });
+    // The jury counts mistakes question by question; the card stays pending until تجويد is given.
+    const questions = [
+      { number: 1, surahId: 2, ayah: 255, mistakes: 'تردّد في الآية 257', tanbihCount: 2, tashihCount: 2 }, // -1
+      { number: 2, surahId: 18, ayah: 1, tanbihCount: 2 }, // -0.5
+      { number: 3 }, // empty rows are not stored
+    ];
+    const draft = await save(staff, c1, { questions }).expect(200);
+    expect(draft.body.candidate).toMatchObject({ state: 'PENDING', hifzScore: null, totalScore: null });
+    expect(draft.body.questions[0]).toMatchObject({ tanbihCount: 2, tashihCount: 2 });
+
+    const ok = await save(staff, c1, { tajwidScore: 5, notes: 'حفظ متين', hifzScore: 14, questions }).expect(200); // a sent حفظ is ignored
+    expect(ok.body.candidate).toMatchObject({ state: 'SCORED', hifzScore: '12.5', tajwidScore: '5', totalScore: '17.5', total: '17.5', passed: true });
     expect(ok.body.questions).toHaveLength(2);
   });
 
@@ -127,10 +129,13 @@ describe('Evaluations (e2e)', () => {
     await stranger.get(`/api/evaluations/${evaluationId}`).expect(404);
 
     const c3 = await cardOf(3);
-    await save(stranger, c3, { hifzScore: 10, tajwidScore: 5 }).expect(404);
-    await save(juror, c3, { hifzScore: 11.5, tajwidScore: 6 }).expect(200); // 17.5, ties with n°1
+    await save(stranger, c3, { tajwidScore: 5 }).expect(404);
+    // حفظ 14 - 1.5 - 1 = 11.5, + 6 = 17.5: ties with n°1
+    const q3 = [{ number: 1, tanbihCount: 6 }, { number: 4, tashihCount: 4 }];
+    await save(juror, c3, { tajwidScore: 6, questions: q3 }).expect(200);
     await save(juror, await cardOf(4), { absent: true }).expect(200);
-    await save(juror, await cardOf(2), { hifzScore: 4, tajwidScore: 0.5 }).expect(200); // جزء عمّ: 4.5 < 5
+    // جزء عمّ: 7 split over 2 questions; 12 mistakes leave 0.5 on Q1 → حفظ 4, + 0.5 = 4.5 < 5
+    await save(juror, await cardOf(2), { tajwidScore: 0.5, questions: [{ number: 1, tanbihCount: 12 }] }).expect(200);
   });
 
   it('ranks each branch with shared ranks, then pending and absent candidates', async () => {
@@ -158,7 +163,12 @@ describe('Evaluations (e2e)', () => {
   });
 
   it('protects filled cards when a branch scale changes or a branch is removed', async () => {
-    await staff.patch(`/api/evaluations/${evaluationId}/branches/${big}`).set(H).send({ hifzMax: 12 }).expect(409, /SCORES_ABOVE_NEW_MAX/);
+    await staff.patch(`/api/evaluations/${evaluationId}/branches/${big}`).set(H).send({ tajwidMax: 5 }).expect(409, /SCORES_ABOVE_NEW_MAX/);
+    // A new حفظ maximum recomputes the filled cards: 3 per question, n°1 loses 1 + 0.5 → 10.5.
+    await staff.patch(`/api/evaluations/${evaluationId}/branches/${big}`).set(H).send({ hifzMax: 12 }).expect(200);
+    const c1 = await staff.get(`/api/evaluations/${evaluationId}/candidates/${await cardOf(1)}/card`).expect(200);
+    expect(c1.body.candidate).toMatchObject({ hifzScore: '10.5', totalScore: '15.5' });
+    await staff.patch(`/api/evaluations/${evaluationId}/branches/${big}`).set(H).send({ hifzMax: 14 }).expect(200);
     await staff.patch(`/api/evaluations/${evaluationId}/branches/${big}`).set(H).send({ questionCount: 1 }).expect(409, /QUESTIONS_BEYOND_NEW_COUNT/);
     await staff.delete(`/api/evaluations/${evaluationId}/branches/${big}`).set(H).expect(409, /BRANCH_HAS_CANDIDATES/);
     await staff.patch(`/api/evaluations/${evaluationId}/branches/${big}`).set(H).send({ passScore: 18 }).expect(200);
@@ -167,7 +177,7 @@ describe('Evaluations (e2e)', () => {
   it('locks everything once closed; only an admin reopens; scored evaluations cannot be deleted', async () => {
     await juror.post(`/api/evaluations/${evaluationId}/close`).set(H).expect(403);
     await staff.post(`/api/evaluations/${evaluationId}/close`).set(H).expect(200);
-    await save(juror, await cardOf(3), { hifzScore: 14, tajwidScore: 6 }).expect(409, /EVALUATION_CLOSED/);
+    await save(juror, await cardOf(3), { tajwidScore: 6 }).expect(409, /EVALUATION_CLOSED/);
     await staff.post(`/api/evaluations/${evaluationId}/candidates`).set(H).send({ branchId: small, fullName: 'متأخّر' }).expect(409);
     const card = await juror.get(`/api/evaluations/${evaluationId}/candidates/${await cardOf(3)}/card`).expect(200);
     expect(card.body.canScore).toBe(false);
@@ -181,5 +191,9 @@ describe('Evaluations (e2e)', () => {
     const c = await cardOf(4);
     await expect(prisma.evaluationCandidate.update({ where: { id: c }, data: { absent: true, hifzScore: 1, tajwidScore: 1 } })).rejects.toThrow();
     await expect(prisma.evaluationCandidate.update({ where: { id: c }, data: { absent: false, hifzScore: 1 } })).rejects.toThrow();
+    // The stored final mark must be حفظ + تجويد.
+    await expect(prisma.evaluationCandidate.update({ where: { id: c }, data: { absent: false, hifzScore: 1, tajwidScore: 1 } })).rejects.toThrow();
+    await expect(prisma.evaluationCandidate.update({ where: { id: c }, data: { absent: false, hifzScore: 1, tajwidScore: 1, totalScore: 3 } })).rejects.toThrow();
+    await expect(prisma.evaluationQuestion.create({ data: { candidateId: c, number: 1, tanbihCount: -1 } })).rejects.toThrow();
   });
 });

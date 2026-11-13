@@ -16,7 +16,7 @@ import type {
   UpdateCandidateDto,
   UpdateEvaluationDto,
 } from './evaluations.schemas.js';
-import { candidateResult, maxTotal, rankBranch, type Scale, scoreError } from './scoring.js';
+import { candidateResult, cardMarks, type CardScale, maxTotal, rankBranch, type Scale, scoreError } from './scoring.js';
 
 const conflict = (code: string, params?: Record<string, unknown>) => new ApiError(HttpStatus.CONFLICT, code, params);
 const invalid = (code: string, params?: Record<string, unknown>) => new ApiError(HttpStatus.BAD_REQUEST, code, params);
@@ -40,11 +40,22 @@ const candidateSelect = {
   absent: true,
   hifzScore: true,
   tajwidScore: true,
+  totalScore: true,
   notes: true,
   scoredAt: true,
   student: { select: { code: true } },
   _count: { select: { questions: true } },
 } satisfies Prisma.EvaluationCandidateSelect;
+
+const questionSelect = {
+  number: true,
+  surahId: true,
+  ayah: true,
+  mistakes: true,
+  tanbihCount: true,
+  tashihCount: true,
+  note: true,
+} satisfies Prisma.EvaluationQuestionSelect;
 
 type CandidateRow = Prisma.EvaluationCandidateGetPayload<{ select: typeof candidateSelect }>;
 
@@ -211,16 +222,17 @@ export class EvaluationsService {
     const branch = await this.branch(actor, id, branchId);
     const scale = { ...branch, ...dto };
     this.assertScale(scale);
-    // Lowering a maximum must not leave a filled card above it.
-    const above = await db.evaluationCandidate.count({
-      where: { branchId, OR: [{ hifzScore: { gt: scale.hifzMax } }, { tajwidScore: { gt: scale.tajwidMax } }] },
-    });
+    // Lowering the تجويد maximum must not leave a filled card above it (حفظ is recomputed below).
+    const above = await db.evaluationCandidate.count({ where: { branchId, tajwidScore: { gt: scale.tajwidMax } } });
     if (above) throw conflict('SCORES_ABOVE_NEW_MAX', { count: above });
     if (dto.questionCount !== undefined) {
       const beyond = await db.evaluationQuestion.count({ where: { candidate: { branchId }, number: { gt: dto.questionCount } } });
       if (beyond) throw conflict('QUESTIONS_BEYOND_NEW_COUNT', { count: beyond });
     }
-    await db.evaluationBranch.update({ where: { id: branchId }, data: dto });
+    await db.$transaction(async (tx) => {
+      const updated = await tx.evaluationBranch.update({ where: { id: branchId }, data: dto });
+      if (dto.hifzMax !== undefined || dto.questionCount !== undefined) await this.recomputeMarks(tx, { branchId }, updated);
+    });
     return this.get(actor, id);
   }
 
@@ -313,7 +325,10 @@ export class EvaluationsService {
       const beyond = await db.evaluationQuestion.count({ where: { candidateId, number: { gt: target.questionCount } } });
       if (beyond) throw conflict('QUESTIONS_BEYOND_NEW_COUNT', { count: beyond });
     }
-    await db.evaluationCandidate.update({ where: { id: candidateId }, data: dto });
+    await db.$transaction(async (tx) => {
+      await tx.evaluationCandidate.update({ where: { id: candidateId }, data: dto });
+      if (dto.branchId && dto.branchId !== c.branchId) await this.recomputeMarks(tx, { id: candidateId }, await this.branch(actor, id, dto.branchId));
+    });
     return { id: candidateId };
   }
 
@@ -337,7 +352,7 @@ export class EvaluationsService {
         ...candidateSelect,
         branch: true,
         scoredBy: { select: { firstName: true, lastName: true } },
-        questions: { orderBy: { number: 'asc' }, select: { number: true, surahId: true, ayah: true, mistakes: true, note: true } },
+        questions: { orderBy: { number: 'asc' }, select: questionSelect },
       },
     });
     if (!c) throw notFound('EvaluationCandidate');
@@ -358,7 +373,7 @@ export class EvaluationsService {
     const questions = await this.prisma.evaluationQuestion.findMany({
       where: { candidate: { evaluationId: id, schoolId: actor.schoolId } },
       orderBy: { number: 'asc' },
-      select: { candidateId: true, number: true, surahId: true, ayah: true, mistakes: true, note: true },
+      select: { candidateId: true, ...questionSelect },
     });
     const byCandidate = new Map<string, typeof questions>();
     for (const q of questions) byCandidate.set(q.candidateId, [...(byCandidate.get(q.candidateId) ?? []), q]);
@@ -380,7 +395,7 @@ export class EvaluationsService {
     const db = this.prisma.forSchool(actor.schoolId);
     const c = await db.evaluationCandidate.findFirst({
       where: { id: candidateId, evaluationId: id },
-      select: { id: true, absent: true, hifzScore: true, tajwidScore: true, notes: true, branch: true },
+      select: { id: true, absent: true, hifzScore: true, tajwidScore: true, totalScore: true, notes: true, branch: true },
     });
     if (!c) throw notFound('EvaluationCandidate');
 
@@ -392,15 +407,15 @@ export class EvaluationsService {
     }
     await this.assertAyahs(actor.schoolId, dto.questions);
 
-    const questions = dto.questions.filter((q) => q.surahId !== null || q.mistakes || q.note);
-    const filled = dto.absent || dto.hifzScore !== null;
+    const questions = dto.questions.filter((q) => q.surahId !== null || q.mistakes || q.note || q.tanbihCount || q.tashihCount);
+    const marks = cardMarks(c.branch, dto, dto.questions);
+    const filled = dto.absent || marks.hifzScore !== null;
     await db.$transaction(async (tx) => {
       await tx.evaluationCandidate.update({
         where: { id: candidateId },
         data: {
           absent: dto.absent,
-          hifzScore: dto.hifzScore,
-          tajwidScore: dto.tajwidScore,
+          ...marks,
           notes: dto.notes || null,
           scoredAt: filled ? new Date() : null,
           scoredById: filled ? actor.id : null,
@@ -412,8 +427,7 @@ export class EvaluationsService {
     const { branch: _branch, ...before } = c;
     await this.audit.log(actor, 'EVALUATION_CARD_SAVE', 'EvaluationCandidate', candidateId, before, {
       absent: dto.absent,
-      hifzScore: dto.hifzScore,
-      tajwidScore: dto.tajwidScore,
+      ...marks,
       notes: dto.notes,
     });
     return this.card(actor, id, candidateId);
@@ -482,6 +496,15 @@ export class EvaluationsService {
     const e = await this.visibleEvaluation(actor, id);
     if (e.status === 'CLOSED') throw conflict('EVALUATION_CLOSED');
     return e;
+  }
+
+  /** Recomputes حفظ and the final mark of complete cards after their branch scale changed. */
+  private async recomputeMarks(tx: SchoolTx, where: Prisma.EvaluationCandidateWhereInput, scale: CardScale) {
+    const rows = await tx.evaluationCandidate.findMany({
+      where: { ...where, hifzScore: { not: null } },
+      select: { id: true, absent: true, tajwidScore: true, questions: { select: { number: true, tanbihCount: true, tashihCount: true } } },
+    });
+    for (const r of rows) await tx.evaluationCandidate.update({ where: { id: r.id }, data: cardMarks(scale, r, r.questions) });
   }
 
   private async assertEvaluationInTx(tx: SchoolTx, id: string) {

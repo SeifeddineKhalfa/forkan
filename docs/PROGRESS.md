@@ -337,6 +337,20 @@ Open questions for the school:
 - Grade labels (ممتاز، حسن جدّاً…) and their thresholds, and a tie-break rule for prizes (e.g. higher حفظ first).
 - Certificates and prize lists (spec Phase 2) are not built yet.
 
+## Exams: حفظ computed from تنبيه / تصليح ✅ (2026-11-13)
+
+School rule: حفظ /14 split over the 4 questions (3.5 each); each تنبيه or تصليح costs 0.25; the jury
+gives تجويد /6; the final mark is computed and stored.
+
+- Migration `evaluation_mistake_counts`: `EvaluationQuestion.tanbihCount/tashihCount` (0–99),
+  `EvaluationCandidate.totalScore` (= حفظ + تجويد, CHECK; backfilled for existing cards).
+- `scoring.ts`: `hifzFromMistakes` (per-question floor at 0, so one bad question cannot eat the others;
+  `MISTAKE_PENALTY` = 0.25), `cardMarks`. The card API no longer accepts حفظ; it is computed on save
+  once تجويد is given (before that the card stays PENDING with its counts saved). Changing a branch's
+  حفظ maximum / question count, or moving a candidate to another branch, recomputes the filled cards.
+- UI: ± counters per question with the question's mark, live حفظ and total; counts on printed cards.
+- Cards scored before this change keep their typed حفظ until re-saved or their branch scale changes.
+
 ## Global verification + hardening pass ✅ (2026-11-12)
 
 Audit of the whole app (backend services, schemas, frontend screens), fixes:

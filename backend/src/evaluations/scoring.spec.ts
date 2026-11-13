@@ -1,4 +1,4 @@
-import { candidateResult, maxTotal, rankBranch, type Scale, scoreError } from './scoring.js';
+import { candidateResult, cardMarks, type CardScale, hifzFromMistakes, maxTotal, rankBranch, type Scale, scoreError } from './scoring.js';
 
 const sheet: Scale = { hifzMax: 14, tajwidMax: 6, passScore: 10 };
 const card = (hifzScore: number | null, tajwidScore: number | null, absent = false) => ({ absent, hifzScore, tajwidScore });
@@ -10,25 +10,61 @@ describe('maxTotal', () => {
   });
 });
 
+const sheet4: CardScale = { ...sheet, questionCount: 4 };
+const q = (number: number, tanbihCount = 0, tashihCount = 0) => ({ number, tanbihCount, tashihCount });
+
+describe('hifzFromMistakes', () => {
+  it('gives the full حفظ mark with no تنبيه or تصليح, 3.5 per question on the school sheet', () => {
+    expect(hifzFromMistakes(sheet4, []).toNumber()).toBe(14);
+    expect(hifzFromMistakes(sheet4, [q(1), q(2), q(3), q(4)]).toNumber()).toBe(14);
+  });
+
+  it('takes 0.25 off for each تنبيه and each تصليح', () => {
+    // Q1: 2 تنبيه + 1 تصليح = -0.75; Q3: 1 تصليح = -0.25 → 13
+    expect(hifzFromMistakes(sheet4, [q(1, 2, 1), q(3, 0, 1)]).toNumber()).toBe(13);
+  });
+
+  it('never takes a question below 0, so one bad question cannot eat the others', () => {
+    // Q2: 20 mistakes = -5 but the question is only worth 3.5 → 14 - 3.5
+    expect(hifzFromMistakes(sheet4, [q(2, 20)]).toNumber()).toBe(10.5);
+    expect(hifzFromMistakes(sheet4, [q(1, 14), q(2, 14), q(3, 14), q(4, 14)]).toNumber()).toBe(0);
+  });
+
+  it('follows the branch scale and ignores questions beyond its count', () => {
+    expect(hifzFromMistakes({ hifzMax: 7, questionCount: 2 }, [q(1, 1), q(3, 10)]).toNumber()).toBe(6.75);
+    // 14 / 3 per question, rounded to 2 decimals at the end
+    expect(hifzFromMistakes({ hifzMax: 14, questionCount: 3 }, [q(1, 1)]).toNumber()).toBe(13.75);
+  });
+});
+
+describe('cardMarks', () => {
+  it('computes حفظ and stores the final mark once تجويد is given', () => {
+    const m = cardMarks(sheet4, { absent: false, tajwidScore: '5' }, [q(1, 2, 1), q(3, 0, 1)]);
+    expect([m.hifzScore?.toNumber(), m.tajwidScore?.toNumber(), m.totalScore?.toNumber()]).toEqual([13, 5, 18]);
+  });
+
+  it('stores no mark while تجويد is missing or when absent', () => {
+    const none = { hifzScore: null, tajwidScore: null, totalScore: null };
+    expect(cardMarks(sheet4, { absent: false, tajwidScore: null }, [q(1, 3)])).toEqual(none);
+    expect(cardMarks(sheet4, { absent: true, tajwidScore: null }, [])).toEqual(none);
+  });
+});
+
 describe('scoreError', () => {
-  it('accepts a blank card, a full card and the maxima', () => {
-    expect(scoreError(sheet, card(null, null))).toBeNull();
-    expect(scoreError(sheet, card(12.5, 4.25))).toBeNull();
-    expect(scoreError(sheet, card(14, 6))).toBeNull();
-    expect(scoreError(sheet, card(0, 0))).toBeNull();
+  const card4 = (tajwidScore: number | null, absent = false) => ({ absent, tajwidScore });
+
+  it('accepts a blank card and تجويد up to the branch maximum', () => {
+    expect(scoreError(sheet, card4(null))).toBeNull();
+    expect(scoreError(sheet, card4(4.25))).toBeNull();
+    expect(scoreError(sheet, card4(6))).toBeNull();
+    expect(scoreError(sheet, card4(0))).toBeNull();
   });
 
-  it('refuses marks above the branch scale', () => {
-    expect(scoreError(sheet, card(14.5, 3))).toBe('SCORE_ABOVE_MAX');
-    expect(scoreError(sheet, card(10, 6.25))).toBe('SCORE_ABOVE_MAX');
-  });
-
-  it('needs both marks together, none when absent, never negative', () => {
-    expect(scoreError(sheet, card(10, null))).toBe('SCORE_INCOMPLETE');
-    expect(scoreError(sheet, card(null, 4))).toBe('SCORE_INCOMPLETE');
-    expect(scoreError(sheet, card(10, 4, true))).toBe('ABSENT_WITH_SCORE');
-    expect(scoreError(sheet, card(null, null, true))).toBeNull();
-    expect(scoreError(sheet, card(-1, 4))).toBe('SCORE_NEGATIVE');
+  it('refuses تجويد above the scale, negative, or given to an absent candidate', () => {
+    expect(scoreError(sheet, card4(6.25))).toBe('SCORE_ABOVE_MAX');
+    expect(scoreError(sheet, card4(-1))).toBe('SCORE_NEGATIVE');
+    expect(scoreError(sheet, card4(4, true))).toBe('ABSENT_WITH_SCORE');
+    expect(scoreError(sheet, card4(null, true))).toBeNull();
   });
 });
 

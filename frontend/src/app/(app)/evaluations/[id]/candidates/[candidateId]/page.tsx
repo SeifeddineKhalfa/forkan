@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Lock, Save } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock, Minus, Plus, Save } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -22,18 +22,19 @@ import { useQuranMeta } from "@/lib/quran";
 import type { EvaluationCard, EvaluationDetail, QuranMeta } from "@/lib/types";
 import { useErrorMessage } from "@/lib/use-error-message";
 import { cn } from "@/lib/utils";
-import { mark } from "../../score";
+import { cardHifz, mark, MISTAKE_PENALTY, questionHifz } from "../../score";
 
 interface Row {
   surahId: string;
   ayah: string;
   mistakes: string;
+  tanbih: number;
+  tashih: number;
   note: string;
 }
 
 interface Draft {
   absent: boolean;
-  hifz: string;
   tajwid: string;
   notes: string;
   rows: Row[];
@@ -41,12 +42,11 @@ interface Draft {
 
 const toDraft = (c: EvaluationCard): Draft => ({
   absent: c.candidate.absent,
-  hifz: mark(c.candidate.hifzScore),
   tajwid: mark(c.candidate.tajwidScore),
   notes: c.candidate.notes ?? "",
   rows: Array.from({ length: c.branch.questionCount }, (_, i) => {
     const q = c.questions.find((x) => x.number === i + 1);
-    return { surahId: q?.surahId ? String(q.surahId) : "", ayah: q?.ayah ? String(q.ayah) : "", mistakes: q?.mistakes ?? "", note: q?.note ?? "" };
+    return { surahId: q?.surahId ? String(q.surahId) : "", ayah: q?.ayah ? String(q.ayah) : "", mistakes: q?.mistakes ?? "", tanbih: q?.tanbihCount ?? 0, tashih: q?.tashihCount ?? 0, note: q?.note ?? "" };
   }),
 });
 
@@ -92,7 +92,6 @@ function CardForm({ card, meta }: { card: EvaluationCard; meta: QuranMeta }) {
         method: "PUT",
         body: {
           absent: d.absent,
-          hifzScore: d.absent || d.hifz.trim() === "" ? null : d.hifz.trim(),
           tajwidScore: d.absent || d.tajwid.trim() === "" ? null : d.tajwid.trim(),
           notes: d.notes.trim() || null,
           questions: d.rows.map((r, i) => ({
@@ -100,6 +99,8 @@ function CardForm({ card, meta }: { card: EvaluationCard; meta: QuranMeta }) {
             surahId: r.surahId ? Number(r.surahId) : null,
             ayah: r.surahId && r.ayah ? Number(r.ayah) : null,
             mistakes: r.mistakes.trim() || null,
+            tanbihCount: r.tanbih,
+            tashihCount: r.tashih,
             note: r.note.trim() || null,
           })),
         },
@@ -116,7 +117,9 @@ function CardForm({ card, meta }: { card: EvaluationCard; meta: QuranMeta }) {
 
   const setRow = (i: number, patch: Partial<Row>) => setD({ ...d, rows: d.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const over = (v: string, max: string) => v.trim() !== "" && Number(v) > Number(max);
-  const total = d.absent || d.hifz === "" || d.tajwid === "" ? null : Number(d.hifz) + Number(d.tajwid);
+  // حفظ follows the تنبيه / تصليح counts live; the server computes the same mark when saving.
+  const hifz = cardHifz(branch.hifzMax, branch.questionCount, d.rows.map((r) => r.tanbih + r.tashih));
+  const total = d.absent || d.tajwid.trim() === "" ? null : hifz + Number(d.tajwid);
   const passed = total === null || branch.passScore === null ? null : total >= Number(branch.passScore);
 
   return (
@@ -195,7 +198,7 @@ function CardForm({ card, meta }: { card: EvaluationCard; meta: QuranMeta }) {
           const surah = r.surahId ? meta.surahs[Number(r.surahId) - 1] : undefined;
           return (
             <Card key={i} className="py-3">
-              <CardContent className="grid gap-3 px-3 sm:grid-cols-[3rem_minmax(14rem,1fr)_2fr] sm:items-start">
+              <CardContent className="grid gap-3 px-3 sm:grid-cols-[3rem_minmax(14rem,1fr)_2fr] sm:items-start lg:grid-cols-[3rem_minmax(14rem,1fr)_auto_2fr]">
                 <span className="flex size-9 items-center justify-center rounded-full bg-muted font-mono font-bold" aria-label={t("questionNumber")}>
                   {String(i + 1).padStart(2, "0")}
                 </span>
@@ -230,6 +233,19 @@ function CardForm({ card, meta }: { card: EvaluationCard; meta: QuranMeta }) {
                     />
                   </div>
                 </div>
+                <div className="grid gap-2 sm:col-start-2 lg:col-start-auto">
+                  <span className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
+                    {t("questionMark")}
+                    <span dir="ltr" className="font-mono text-sm font-bold text-foreground">
+                      {mark(questionHifz(branch.hifzMax, branch.questionCount, r.tanbih + r.tashih).toFixed(2))}
+                      <span className="text-xs font-normal text-muted-foreground">/{mark((Number(branch.hifzMax) / branch.questionCount).toFixed(2))}</span>
+                    </span>
+                  </span>
+                  <div className="flex gap-3">
+                    <Counter label={t("tanbih")} value={r.tanbih} onChange={(v) => setRow(i, { tanbih: v })} />
+                    <Counter label={t("tashih")} value={r.tashih} onChange={(v) => setRow(i, { tashih: v })} />
+                  </div>
+                </div>
                 <div className="grid gap-2">
                   <Label htmlFor={`mistakes-${i}`} className="text-xs text-muted-foreground">{t("mistakes")}</Label>
                   <Textarea id={`mistakes-${i}`} rows={2} value={r.mistakes} onChange={(e) => setRow(i, { mistakes: e.target.value })} />
@@ -251,7 +267,15 @@ function CardForm({ card, meta }: { card: EvaluationCard; meta: QuranMeta }) {
             </span>
           </label>
           <div className="grid grid-cols-2 gap-4 sm:max-w-md">
-            <MarkInput id="hifz" label={t("hifz")} max={branch.hifzMax} value={d.hifz} disabled={readOnly || d.absent} invalid={over(d.hifz, branch.hifzMax)} onChange={(v) => setD({ ...d, hifz: v })} />
+            <div className="grid gap-2">
+              <span className="text-sm font-medium">
+                {t("hifz")} <span className="text-muted-foreground" dir="ltr">/{mark(branch.hifzMax)}</span>
+              </span>
+              <output aria-live="polite" dir="ltr" className="flex h-12 items-center justify-center rounded-md border bg-muted font-mono text-xl">
+                {d.absent ? "—" : mark(hifz)}
+              </output>
+              <span className="text-xs text-muted-foreground">{t("hifzComputed", { penalty: mark(MISTAKE_PENALTY) })}</span>
+            </div>
             <MarkInput id="tajwid" label={t("tajwid")} max={branch.tajwidMax} value={d.tajwid} disabled={readOnly || d.absent} invalid={over(d.tajwid, branch.tajwidMax)} onChange={(v) => setD({ ...d, tajwid: v })} />
           </div>
           <div className="grid gap-2">
@@ -303,6 +327,27 @@ function MarkInput({ id, label, max, value, disabled, invalid, onChange }: { id:
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+}
+
+/** A تنبيه / تصليح tally with large ± buttons, easy to tap during the recitation. */
+function Counter({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  const t = useTranslations("evaluations");
+  return (
+    <div className="grid justify-items-center gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-1">
+        <Button type="button" variant="outline" size="icon" aria-label={t("removeOne", { what: label })} disabled={value === 0} onClick={() => onChange(value - 1)}>
+          <Minus />
+        </Button>
+        <span dir="ltr" aria-live="polite" aria-label={label} className="w-8 text-center font-mono text-lg font-bold">
+          {value}
+        </span>
+        <Button type="button" variant="outline" size="icon" aria-label={t("addOne", { what: label })} disabled={value >= 99} onClick={() => onChange(value + 1)}>
+          <Plus />
+        </Button>
+      </div>
     </div>
   );
 }

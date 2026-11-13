@@ -76,9 +76,11 @@ export const updateCandidateSchema = z.object({
   phone: phoneSchema.nullable().optional(),
 });
 
+/** حفظ is not sent: the server computes it from each question's تنبيه / تصليح counts. */
+const mistakeCount = z.number().int().min(0).max(99).default(0);
+
 export const cardSchema = z.object({
   absent: z.boolean().default(false),
-  hifzScore: mark.nullable().default(null),
   tajwidScore: mark.nullable().default(null),
   notes: z.string().trim().max(2000).nullable().default(null),
   questions: z
@@ -88,6 +90,8 @@ export const cardSchema = z.object({
         surahId: z.number().int().min(1).max(114).nullable().default(null),
         ayah: z.number().int().min(1).max(286).nullable().default(null),
         mistakes: z.string().trim().max(2000).nullable().default(null),
+        tanbihCount: mistakeCount,
+        tashihCount: mistakeCount,
         note: z.string().trim().max(500).nullable().default(null),
       }),
     )

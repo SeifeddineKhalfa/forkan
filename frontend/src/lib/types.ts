@@ -607,6 +607,7 @@ export interface EvaluationCandidate {
   absent: boolean;
   hifzScore: string | null;
   tajwidScore: string | null;
+  totalScore: string | null;
   notes: string | null;
   scoredAt: string | null;
   questionsFilled: number;
@@ -638,6 +639,8 @@ export interface EvaluationQuestion {
   surahId: number | null;
   ayah: number | null;
   mistakes: string | null;
+  tanbihCount: number;
+  tashihCount: number;
   note: string | null;
 }
 
