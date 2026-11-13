@@ -269,9 +269,12 @@ export class PeopleService {
     const before = await db.enrollment.findUnique({ where: { id } });
     if (!before) throw notFound('Enrollment');
     if (before.status === 'ENDED') return before;
+    if (endDate && endDate < before.startDate) throw new ApiError(HttpStatus.UNPROCESSABLE_ENTITY, 'END_BEFORE_START');
+    // Ending today an enrollment that starts later: close it on its own start date.
+    const today = todayInSchool();
     const enrollment = await db.enrollment.update({
       where: { id },
-      data: { status: 'ENDED', endDate: endDate ?? todayInSchool() },
+      data: { status: 'ENDED', endDate: endDate ?? (today < before.startDate ? before.startDate : today) },
     });
     await this.audit.log(actor, 'ENROLLMENT_END', 'Enrollment', id, before, enrollment);
     return enrollment;

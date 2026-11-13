@@ -52,7 +52,7 @@ function Sheet({ session }: { session: SessionDetail }) {
   const [notes, setNotes] = useState(session.notes ?? "");
   const [cancelling, setCancelling] = useState<CancelTarget | null>(null);
   const cancelled = session.status === "CANCELLED";
-  const office = me?.role !== "TEACHER";
+  const office = !!me && me.role !== "TEACHER";
 
   const save = useMutation({
     mutationFn: () =>
@@ -71,8 +71,9 @@ function Sheet({ session }: { session: SessionDetail }) {
     mutationFn: () => api<SessionDetail>(`/sessions/${session.id}/reopen`, { method: "POST" }),
     onSuccess: (data) => {
       qc.setQueryData(["attendance", "session", session.id], data);
-      void qc.invalidateQueries({ queryKey: ["attendance", "day"] });
+      void qc.invalidateQueries({ queryKey: ["attendance"] });
     },
+    onError: (e) => toast.error(errorMessage(e)),
   });
 
   const counts = Object.fromEntries(ATTENDANCE_STATUSES.map((st) => [st, 0])) as Record<AttendanceStatus, number>;

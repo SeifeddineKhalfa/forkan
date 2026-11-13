@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { blankToUndefined, isoDate, money } from '../common/schemas.js';
+import { blankToUndefined, isoDate, money, patchOf } from '../common/schemas.js';
 
 const month = z.number().int().min(1).max(12);
 
@@ -27,18 +27,18 @@ export const updateAcademicYearSchema = z.object({
 export const venueSchema = z.object({
   name: z.string().trim().min(1).max(120),
   address: blankToUndefined(z.string().trim().max(250)),
-  mapEmbedUrl: blankToUndefined(z.string().url().max(1000)),
+  mapEmbedUrl: blankToUndefined(z.string().url().max(1000).refine((u) => /^https:\/\//i.test(u), { message: 'HTTPS_URL_REQUIRED' })),
   isPublic: z.boolean().default(true),
 });
 
-export const updateVenueSchema = venueSchema.partial().extend({ isActive: z.boolean().optional() });
+export const updateVenueSchema = patchOf(venueSchema).extend({ isActive: z.boolean().optional() });
 
 export const roomSchema = z.object({
   name: z.string().trim().min(1).max(80),
   capacity: blankToUndefined(z.number().int().min(1).max(1000)),
 });
 
-export const updateRoomSchema = roomSchema.partial().extend({ isActive: z.boolean().optional() });
+export const updateRoomSchema = patchOf(roomSchema).extend({ isActive: z.boolean().optional() });
 
 export type AcademicYearDto = z.infer<typeof academicYearSchema>;
 export type UpdateAcademicYearDto = z.infer<typeof updateAcademicYearSchema>;

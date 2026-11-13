@@ -31,7 +31,7 @@ function Body({ charge, onClose }: { charge: Charge; onClose: () => void }) {
   const cancel = useMutation({
     mutationFn: () => api(`/charges/${charge.id}/cancel`, { method: "POST", body: { reason } }),
     onSuccess: () => {
-      for (const key of ["charges", "account", "memberships", "classes"]) void qc.invalidateQueries({ queryKey: [key] });
+      for (const key of ["charges", "account", "memberships", "classes", "finance"]) void qc.invalidateQueries({ queryKey: [key] });
       onClose();
     },
   });

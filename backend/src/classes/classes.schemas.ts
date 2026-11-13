@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { blankToUndefined, hhmm, id, money } from '../common/schemas.js';
+import { blankToUndefined, hhmm, id, money, patchOf } from '../common/schemas.js';
 
 export const slotSchema = z
   .object({
@@ -44,10 +44,7 @@ export const createClassSchema = z.object({
   teachers: teachersList.default([]),
 });
 
-export const updateClassSchema = z
-  .object(classFields)
-  .omit({ academicYearId: true })
-  .partial()
+export const updateClassSchema = patchOf(z.object(classFields).omit({ academicYearId: true }))
   .extend({
     roomId: id.nullable().optional(),
     isActive: z.boolean().optional(),

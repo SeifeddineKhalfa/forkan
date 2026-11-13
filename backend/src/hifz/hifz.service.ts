@@ -43,6 +43,7 @@ export class HifzService {
       }
     });
     const teacherId = await this.teacherFor(actor, student.id, dto.teacherId);
+    if (dto.classSessionId) await this.assertClassSession(actor, dto.classSessionId);
 
     const session = await this.prisma.forSchool(actor.schoolId).$transaction(async (tx) => {
       const created = await tx.hifzSession.create({
@@ -207,6 +208,8 @@ th { background: #eee; } td.n { text-align: center; }
    * summary is derived from it. Lists read this row, never the entries.
    */
   private async recompute(tx: Tx, studentId: string, riwaya: Riwaya) {
+    // Serialise per student: two sessions saved at once must both end up in the summary.
+    await tx.$queryRaw`SELECT "id" FROM "students" WHERE "id" = ${studentId} FOR UPDATE`;
     const index = await this.quran.index(riwaya);
     const entries = await tx.hifzEntry.findMany({
       where: { riwaya, session: { studentId } },
@@ -237,7 +240,7 @@ th { background: #eee; } td.n { text-align: center; }
       where: { id: studentId },
       select: {
         riwaya: true,
-        enrollments: { where: { status: 'ACTIVE', class: { riwaya: { not: null } } }, select: { class: { select: { riwaya: true } } }, take: 1 },
+        enrollments: { where: { status: 'ACTIVE', class: { riwaya: { not: null } } }, select: { class: { select: { riwaya: true } } }, orderBy: { startDate: 'desc' }, take: 1 },
       },
     });
     if (student?.riwaya) return student.riwaya;
@@ -267,6 +270,14 @@ th { background: #eee; } td.n { text-align: center; }
     if (klass) return klass;
     if (await db.class.findUnique({ where: { id: classId }, select: { id: true } })) throw new ApiError(HttpStatus.FORBIDDEN, 'NOT_YOUR_CLASS');
     throw notFound('Class');
+  }
+
+  /** A linked attendance session must be one of the actor's imla'at in this school. */
+  private async assertClassSession(actor: AuthUser, classSessionId: string) {
+    const db = this.prisma.forSchool(actor.schoolId);
+    const cs = await db.classSession.findUnique({ where: { id: classSessionId }, select: { classId: true } });
+    if (!cs) throw notFound('ClassSession');
+    await this.assertClass(actor, cs.classId);
   }
 
   /** Who listened: chosen by the office, else the teacher typing, else the student's main teacher. */

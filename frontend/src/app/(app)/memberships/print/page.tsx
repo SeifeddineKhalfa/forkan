@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/format";
 import type { MembershipList } from "@/lib/types";
+import { useErrorMessage } from "@/lib/use-error-message";
 
 /** Member list for the general assembly: the browser's print dialog (A4, shell hidden). */
 export default function MembershipsPrintPage() {
@@ -30,10 +31,12 @@ function PrintList() {
   const tc = useTranslations("common");
   const fmt = useFormat();
   const yearId = useSearchParams().get("year");
+  const errorMessage = useErrorMessage();
   const list = useQuery({
     queryKey: ["memberships", "print", yearId],
     queryFn: () => api<MembershipList>(`/memberships${yearId ? `?academicYearId=${yearId}` : ""}`),
   });
+  if (list.isError) return <p className="text-destructive">{errorMessage(list.error)}</p>;
   if (!list.data) return <p className="text-muted-foreground">{tc("loading")}</p>;
   const { year, items } = list.data;
 

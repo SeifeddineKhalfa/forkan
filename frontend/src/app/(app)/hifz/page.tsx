@@ -124,7 +124,7 @@ export default function HifzPage() {
         </div>
       )}
 
-      <HifzEntryDialog target={target} office={me?.role !== "TEACHER"} onClose={() => setTarget(null)} />
+      <HifzEntryDialog target={target} office={!!me && me.role !== "TEACHER"} onClose={() => setTarget(null)} />
     </div>
   );
 }

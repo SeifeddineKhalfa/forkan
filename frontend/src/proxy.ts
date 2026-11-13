@@ -22,6 +22,7 @@ export const config = {
     "/attendance/:path*",
     "/hifz/:path*",
     "/mushaf/:path*",
+    "/evaluations/:path*",
     "/fees/:path*",
     "/payments/:path*",
     "/memberships/:path*",

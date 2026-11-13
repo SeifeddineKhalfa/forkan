@@ -57,7 +57,7 @@ export function StudentHifz({ studentId, name }: { studentId: string; name: stri
   if (!hifz.data) return <p className="text-muted-foreground">{tc("loading")}</p>;
   const h = hifz.data;
   const s = h.summary;
-  const office = me?.role !== "TEACHER";
+  const office = !!me && me.role !== "TEACHER";
 
   return (
     <div className="grid gap-6">

@@ -337,6 +337,39 @@ Open questions for the school:
 - Grade labels (ممتاز، حسن جدّاً…) and their thresholds, and a tie-break rule for prizes (e.g. higher حفظ first).
 - Certificates and prize lists (spec Phase 2) are not built yet.
 
+## Global verification + hardening pass ✅ (2026-11-12)
+
+Audit of the whole app (backend services, schemas, frontend screens), fixes:
+
+- **PATCH bodies:** zod's `.partial()` still applied create-time `.default()`s, so `{ isActive: false }`
+  silently reset fee, capacity, gender policy, status… New `patchOf()` in `common/schemas.ts`, used by
+  every update schema (students, guardians, teachers, imla'at, fees, news, venues/rooms, branches).
+- **Races:** voiding a payment re-checks under `FOR UPDATE` (no double reversal); cancelling a charge
+  re-checks its paid amount under lock; an import job is claimed atomically (no double commit);
+  hifz recompute locks the student; token refresh revokes atomically.
+- **Auth:** each request re-reads the user (deactivated users and role changes apply at once);
+  change-password throttled (5/min).
+- **Validation:** money and marks checked after string conversion (no 0.0004 slipping through);
+  HTTPS-only URLs in settings/venues; enrollment end date not before its start; evaluation year must exist;
+  hifz session must belong to the teacher's imla'; guardian phones no longer exposed to jurors.
+- **Safety:** TipTap renderer guards (own-property tags, depth limit, type checks); file path check
+  uses the separator.
+- **Frontend:** RoleGate hydration warning fixed (`useHydrated`) and API errors shown instead of a blank
+  page; `/evaluations` behind the auth proxy; finance views refresh after charges/memberships;
+  attendance reopen refreshes; missing error codes translated.
+- Tests: `patch-of.spec.ts` (5), two payments e2e (void race, deactivating keeps an imla's settings).
+
+Local QA accounts (admin + teacher) are created by `backend/scripts/qa-users.ts` from `QA_*` variables
+in `backend/.env` (not committed).
+
+Still open from the audit:
+- Error states on ~8 screens (dashboard, finance cards, student hifz, attendance views, jury editor,
+  guardian editor, school card); a11y labels on search inputs/selects; list separators via `Intl`.
+- Enrollment capacity and closed-evaluation checks can still race with concurrent writes (low risk).
+- Business rules to confirm: a student moving imla' mid-month is billed by both; overpaid credit is
+  stranded when the payer is not the student's resolved payer (several `isPayer` guardians possible).
+- Teacher phone walkthrough (attendance, hifz, exams) in progress.
+
 ## Open questions for the school
 
 1. Domain name and server (needed for HTTPS, share links, sitemap).

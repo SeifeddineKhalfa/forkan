@@ -163,6 +163,35 @@ describe('Payments and receipts (e2e)', () => {
     expect(numbers[19] - numbers[0]).toBe(19);
   });
 
+  it('voids a payment only once when two voids race (no double reversal)', async () => {
+    const paid = await staff.post('/api/payments').set(H).send({ payerStudentId: adult, amount: '2' }).expect(201);
+    const results = await Promise.all(
+      Array.from({ length: 3 }, () => admin.post(`/api/payments/${paid.body.id}/void`).set(H).send({ reason: 'سباق' })),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409, 409]);
+    const allocations = await prisma.paymentAllocation.findMany({ where: { paymentId: paid.body.id } });
+    for (const a of allocations) {
+      const c = await prisma.charge.findUniqueOrThrow({ where: { id: a.chargeId } });
+      expect(Number(c.paidAmount)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('keeps an imla\'s fee, capacity and policy when only deactivating it', async () => {
+    const klass = await staff
+      .post('/api/classes')
+      .set(H)
+      .send({ academicYearId: yearId, name: 'إملاء الإيقاف (S4)', audience: 'ADULTS', monthlyFee: '12', capacity: 40, genderPolicy: 'FEMALE_ONLY' })
+      .expect(201);
+    await staff.patch(`/api/classes/${klass.body.id}`).set(H).send({ isActive: false }).expect(200);
+    const row = await prisma.class.findUniqueOrThrow({ where: { id: klass.body.id } });
+    expect({ fee: Number(row.monthlyFee), capacity: row.capacity, policy: row.genderPolicy, active: row.isActive }).toEqual({
+      fee: 12,
+      capacity: 40,
+      policy: 'FEMALE_ONLY',
+      active: false,
+    });
+  });
+
   it('serves the receipt PDF to staff and through the public link only', { timeout: 30_000 }, async () => {
     const payment = await prisma.payment.findFirstOrThrow({ where: { payerGuardianId: guardianId, voidedAt: null } });
     const pdf = await staff.get(`/api/payments/${payment.id}/receipt.pdf`).responseType('blob').expect(200);

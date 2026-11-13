@@ -36,7 +36,7 @@ const candidateSelect = {
   studentId: true,
   fullName: true,
   gender: true,
-  phone: true,
+  // No phone: jurors (teachers) see these rows, and phones are for the office only.
   absent: true,
   hifzScore: true,
   tajwidScore: true,
@@ -126,6 +126,7 @@ export class EvaluationsService {
     const db = this.prisma.forSchool(actor.schoolId);
     this.assertUniqueNames(dto.branches.map((b) => b.name));
     for (const b of dto.branches) this.assertScale(b);
+    if (dto.academicYearId && !(await db.academicYear.count({ where: { id: dto.academicYearId } }))) throw notFound('AcademicYear');
     const academicYearId = dto.academicYearId ?? (await db.academicYear.findFirst({ where: { isCurrent: true }, select: { id: true } }))?.id;
     if (dto.classId) await this.assertClass(actor, dto.classId);
     await this.assertTeachers(actor, dto.jurors);

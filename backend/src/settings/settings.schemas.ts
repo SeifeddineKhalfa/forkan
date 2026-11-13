@@ -14,12 +14,12 @@ export const updateSettingsSchema = z.object({
   schoolAddress: blankToUndefined(z.string().trim().max(250)),
   /** Plain text shown on the public «about» page (one paragraph per line). */
   aboutHtml: z.string().trim().max(5000).nullable().optional(),
-  mapEmbedUrl: z.string().trim().url().max(1000).nullable().optional(),
+  mapEmbedUrl: z.string().trim().url().max(1000).refine((u) => /^https:\/\//i.test(u), { message: 'HTTPS_URL_REQUIRED' }).nullable().optional(),
   socialLinks: z
     .object({
-      facebook: blankToUndefined(z.string().trim().url().max(300)),
-      instagram: blankToUndefined(z.string().trim().url().max(300)),
-      youtube: blankToUndefined(z.string().trim().url().max(300)),
+      facebook: blankToUndefined(z.string().trim().url().max(300).refine((u) => /^https:\/\//i.test(u), { message: 'HTTPS_URL_REQUIRED' })),
+      instagram: blankToUndefined(z.string().trim().url().max(300).refine((u) => /^https:\/\//i.test(u), { message: 'HTTPS_URL_REQUIRED' })),
+      youtube: blankToUndefined(z.string().trim().url().max(300).refine((u) => /^https:\/\//i.test(u), { message: 'HTTPS_URL_REQUIRED' })),
     })
     .optional(),
 });
